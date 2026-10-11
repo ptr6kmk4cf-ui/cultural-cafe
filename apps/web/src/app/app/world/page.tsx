@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { CAFE_PROMPTS } from '@conversa/shared';
 import { Alert, Badge, Empty, Field, PageHeader, Spinner, useToast } from '@/components/ui';
 import { api } from '@/lib/client';
 
@@ -33,11 +34,12 @@ export default function WorldPage() {
   const [queued, setQueued] = useState(false);
   const [toast, show] = useToast();
   const [form, setForm] = useState<Profile>({ optedIn: false, available: false, city: '', country: '', bio: '', portraitPhotoId: null });
+  const [openTopic, setOpenTopic] = useState<string | null>(null);
 
-  async function load() {
+  async function load(syncForm = false) {
     const s = await api('/api/world/state');
     setState(s);
-    setForm(s.profile);
+    if (syncForm) setForm(s.profile);
     if (s.conversation) {
       window.location.href = `/app/world/${s.conversation.id}`;
       return s;
@@ -46,7 +48,7 @@ export default function WorldPage() {
   }
 
   useEffect(() => {
-    load().catch((e) => setError(e.message));
+    load(true).catch((e) => setError(e.message));
     api('/api/photos').then((d) => setPhotos(d.photos.filter((p: Photo) => p.category !== 'PRIVATE'))).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -68,7 +70,7 @@ export default function WorldPage() {
       const next = { ...form, ...extra };
       await api('/api/world/profile', { method: 'PUT', body: next });
       setForm(next);
-      await load();
+      await load(true);
       show('Café card saved');
     } catch (e) {
       setError((e as Error).message);
@@ -138,11 +140,30 @@ export default function WorldPage() {
     <div className="space-y-6">
       <PageHeader
         title="Café"
-        subtitle="For an hour, become a tourist in someone else’s everyday life. The chat is a direct link between your two browsers. Write in your language — they read yours in theirs."
+        subtitle="One hour with an adult in another country. You write in your language; they read a live translation. The person and the table topic are a surprise."
       />
       {error && <Alert kind="error">{error}</Alert>}
+      <div className="card">
+        <p className="text-xs uppercase tracking-wide text-brand-300">Example table topics</p>
+        <p className="mt-1 text-sm text-ink-300">Each café gets one of these when you both sit down. A starting question, not a script.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {CAFE_PROMPTS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`chip ${openTopic === p.id ? 'border-brand-400 bg-brand-500/20 text-white' : ''}`}
+              onClick={() => setOpenTopic(openTopic === p.id ? null : p.id)}
+            >
+              {p.title}
+            </button>
+          ))}
+        </div>
+        {openTopic && (
+          <p className="mt-3 text-sm text-ink-100">{CAFE_PROMPTS.find((p) => p.id === openTopic)?.question}</p>
+        )}
+      </div>
       <p className="text-xs text-ink-400">
-        {state.quota.used} / {state.quota.limit} conversations today · both people must accept · chats last one hour · location is what you type, never inferred · AI drafts / run-the-hour are Premium
+        {state.quota.used} / {state.quota.limit} hours today · both people must accept · text for one hour · location is what you type
       </p>
 
       {invites.length > 0 && (
@@ -181,14 +202,14 @@ export default function WorldPage() {
         <p className="text-xs text-ink-400">Opt in only if you want people in the Café to find you. Portrait is optional and must be a photo you uploaded (never a private one).</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="City (self-stated)">
-            <input className="input" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Lisbon" />
+            <input className="input text-base" autoComplete="address-level2" enterKeyHint="next" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Lisbon" />
           </Field>
           <Field label="Country (self-stated)">
-            <input className="input" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} placeholder="Portugal" />
+            <input className="input text-base" autoComplete="country-name" enterKeyHint="next" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} placeholder="Portugal" />
           </Field>
         </div>
         <Field label="A few words about you" hint="Shown to people you may meet. Do not include your address, phone or social handles.">
-          <textarea className="input min-h-20" value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} placeholder="I like late trains, street food and asking people what they are proud of in their city." />
+          <textarea className="input min-h-20 text-base" value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} placeholder="I like late trains, street food and asking people what they are proud of in their city." />
         </Field>
         <div>
           <span className="label">Portrait (optional)</span>

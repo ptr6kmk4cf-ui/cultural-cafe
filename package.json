@@ -32,5 +32,9 @@
   "devDependencies": {
     "embedded-postgres": "^17.5.0-beta.15",
     "puppeteer": "^24.0.0"
+  },
+  "dependencies": {
+    "@neon/config": "^1.8.6",
+    "@neon/env": "^1.5.3"
   }
 }

@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     id: '/app',
     name: 'Cultural Café',
     short_name: 'Cultural Café',
-    description: 'Meet someone from another place for an hour. Write in your language; they read it in theirs.',
+    description: 'For one hour you write to an adult in another country, in your own language. They read a live translation.',
     start_url: '/app',
     scope: '/',
     display: 'standalone',
@@ -21,9 +21,6 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       { name: 'Café', url: '/app/world', icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }] },
-      { name: 'AI Reply Assistant', url: '/app/assistant', icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }] },
     ],
-    // Android: "Share" a conversation from a dating app straight into the reply assistant.
-    share_target: { action: '/app/assistant', method: 'GET', params: { title: 'title', text: 'text', url: 'url' } },
   } as MetadataRoute.Manifest;
 }

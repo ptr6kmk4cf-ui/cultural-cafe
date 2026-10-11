@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { LANGUAGES, LANGUAGE_MODES, type LanguageModeValue } from '@conversa/shared';
+import { LANGUAGES, type LanguageModeValue } from '@conversa/shared';
 import { Alert, Field, PageHeader, Spinner, useToast } from '@/components/ui';
 import { api } from '@/lib/client';
 import { LanguagePicker, LanguageSelect, refreshPreferredLanguages } from '@/components/LanguageSelect';
@@ -46,33 +46,20 @@ export default function LanguagesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Language settings" subtitle="Defaults for all conversations. Each contact can override these in their conversation settings." actions={<button className="btn-primary" onClick={save}>Save</button>} />
+      <PageHeader title="Language" subtitle="The language you read. People you meet see a live translation." actions={<button className="btn-primary" onClick={save}>Save</button>} />
       {error && <Alert kind="error">{error}</Alert>}
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="card space-y-4">
           <div>
             <span className="label">My languages</span>
             <p className="mb-2 text-xs text-ink-400">
-              The languages you date in. They appear first in every language menu; all {LANGUAGES.length} languages stay available. Languages marked β are supported with lower AI quality.
+              Languages you speak. They appear first in menus. All {LANGUAGES.length} stay available.
             </p>
             <LanguagePicker value={l.preferredLanguages} onChange={(preferredLanguages) => setL({ ...l, preferredLanguages })} />
           </div>
-          <Field label="My language" hint="Incoming messages are translated into this language.">
+          <Field label="Language I read" hint="Their messages are translated into this language.">
             <LanguageSelect native value={l.myLanguage} preferred={l.preferredLanguages} onChange={(myLanguage) => setL({ ...l, myLanguage })} />
           </Field>
-          <Field label="Default reply language">
-            <LanguageSelect native value={l.defaultReplyLanguage} preferred={l.preferredLanguages} onChange={(defaultReplyLanguage) => setL({ ...l, defaultReplyLanguage })} />
-          </Field>
-        </div>
-        <div className="card space-y-3">
-          <span className="label">Default mode</span>
-          {LANGUAGE_MODES.map((m) => (
-            <label key={m.value} className={`block cursor-pointer rounded-xl border p-3 ${l.defaultMode === m.value ? 'border-brand-400 bg-brand-500/10' : 'border-white/10'}`}>
-              <input type="radio" className="mr-2" checked={l.defaultMode === m.value} onChange={() => setL({ ...l, defaultMode: m.value })} />
-              <span className="font-medium text-white">{m.label}</span>
-              <p className="ml-6 text-xs text-ink-300">{m.help}</p>
-            </label>
-          ))}
         </div>
       </div>
       <div className="card space-y-3">

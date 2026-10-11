@@ -10,7 +10,7 @@ export const POST = route(async (req) => {
   if (!full.stripeCustomerId) throw new HttpError(404, 'No billing account yet.');
   const s = await stripe('billing_portal/sessions', {
     customer: full.stripeCustomerId,
-    return_url: `${process.env.APP_URL || 'http://localhost:3000'}/app/subscription`,
+    return_url: `${process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://culturalcafe.online' : 'http://localhost:3000')}/app/subscription`,
   });
   return json({ url: s.url });
 });

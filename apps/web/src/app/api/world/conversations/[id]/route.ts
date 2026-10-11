@@ -1,6 +1,6 @@
 import { requireUser } from '@/lib/auth';
 import { json, route } from '@/lib/http';
-import { expireStale, requireParticipant, serializeConversation } from '@/lib/services/world';
+import { expireStale, listWorldMessages, requireParticipant, serializeConversation } from '@/lib/services/world';
 
 export const GET = route<{ id: string }>(async (req, { id }) => {
   const user = await requireUser(req);
@@ -8,7 +8,6 @@ export const GET = route<{ id: string }>(async (req, { id }) => {
   const c = await requireParticipant(user.id, id);
   return json({
     conversation: await serializeConversation(c, user.id),
-    messages: [],
-    transport: 'webrtc',
+    messages: await listWorldMessages(user.id, id),
   });
 });

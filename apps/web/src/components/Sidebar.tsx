@@ -7,19 +7,10 @@ import { useState } from 'react';
 const NAV = [
   { href: '/app', label: 'Home', icon: '⌂' },
   { href: '/app/world', label: 'Café', icon: '☕' },
-  { href: '/app/matches', label: 'Find Matches', icon: '◎' },
-  { href: '/app/shortlist', label: 'Selected Matches', icon: '★' },
-  { href: '/app/contacts/new', label: 'Add Contact', icon: '+' },
-  { href: '/app/conversations', label: 'Conversations', icon: '✉' },
-  { href: '/app/assistant', label: 'AI Reply Assistant', icon: '✦' },
-  { href: '/app/photos', label: 'My Photos', icon: '▣' },
-  { href: '/app/personality', label: 'Personality', icon: '☺' },
-  { href: '/app/languages', label: 'Languages', icon: '文' },
-  { href: '/app/autopilot', label: 'Autopilot', icon: '⏵' },
-  { href: '/app/subscription', label: 'Subscription', icon: '◆' },
-  { href: '/app/privacy', label: 'Privacy & Account', icon: '⚿' },
-  { href: '/app/extension', label: 'Browser Extension', icon: '⧉' },
-  { href: '/app/download', label: 'Download apps', icon: '⇩' },
+  { href: '/app/conversations', label: 'Hours', icon: '✉' },
+  { href: '/app/languages', label: 'Language', icon: '文' },
+  { href: '/app/photos', label: 'Photo', icon: '▣' },
+  { href: '/app/privacy', label: 'Account', icon: '⚿' },
 ];
 
 export function Sidebar({ user }: { user: { name: string; email: string; plan: string; role: string } }) {
@@ -64,10 +55,18 @@ export function Sidebar({ user }: { user: { name: string; email: string; plan: s
           )}
         </nav>
         <div className="mt-3 rounded-xl border border-white/5 bg-white/5 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-xs">
-          <p className="truncate font-semibold text-white">{user.name}</p>
+          <Link href="/app/privacy" onClick={() => setOpen(false)} className="block truncate font-semibold text-white hover:underline">
+            {user.name}
+          </Link>
           <p className="truncate text-ink-400">{user.email}</p>
           <div className="mt-2 flex items-center justify-between">
-            <span className={`rounded-full px-2 py-0.5 ${user.plan === 'PREMIUM' ? 'bg-brand-500/20 text-brand-200' : 'bg-white/10 text-ink-200'}`}>{user.plan}</span>
+            <Link
+              href="/app/subscription"
+              onClick={() => setOpen(false)}
+              className={`rounded-full px-2 py-0.5 hover:underline ${user.plan === 'PREMIUM' ? 'bg-brand-500/20 text-brand-200' : 'bg-white/10 text-ink-200'}`}
+            >
+              {user.plan}
+            </Link>
             <button
               className="text-ink-300 hover:text-white"
               onClick={async () => {

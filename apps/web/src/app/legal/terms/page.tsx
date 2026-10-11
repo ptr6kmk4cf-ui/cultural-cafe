@@ -10,11 +10,11 @@ export default function Terms() {
       </p>
       <ol className="list-decimal space-y-2 pl-5">
         <li>You must be 18 or older to use Cultural Café.</li>
-        <li>You are responsible for every message you send, including AI-assisted ones. Review suggestions before sending.</li>
-        <li>The Café is for cultural conversation, not dating, money, investment or medical advice. If you use the optional dating assistant, you must comply with those platforms&apos; terms. Autopilot only runs where a platform has explicitly authorised automated messaging.</li>
+        <li>You are responsible for every message you send.</li>
+        <li>The Café is for cultural conversation: text with someone in another country. It is not dating, money, investment or medical advice.</li>
         <li>No harassment, spam, deception for financial gain, impersonation, or messaging people who asked you to stop.</li>
         <li>Never upload intimate images of others, identity documents, or photos of third parties without their consent.</li>
-        <li>AI output can be wrong. Cultural Café never guarantees a match, a friendship, or a particular conversation.</li>
+        <li>Live translation can be wrong. Cultural Café never guarantees a friendship or a particular conversation.</li>
         <li>Subscriptions renew until cancelled; cancel any time from Subscriptions.</li>
       </ol>
     </main>

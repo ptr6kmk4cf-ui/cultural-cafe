@@ -3,8 +3,8 @@ import { PwaRegister } from '@/components/PwaRegister';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Cultural Café — meet people across cultures in your own language',
-  description: 'A one-hour conversation with someone from another place. Write in your language; they read it in theirs.',
+  title: 'Cultural Café',
+  description: 'For one hour you write to an adult in another country, in your own language. They read a live translation.',
   applicationName: 'Cultural Café',
   appleWebApp: { capable: true, title: 'Cultural Café', statusBarStyle: 'black-translucent' },
   icons: { apple: '/icons/apple-touch-icon.png' },

@@ -14,7 +14,7 @@ export const GET = route<{ id: string }>(async (req, { id }) => {
 
 export const POST = route<{ id: string }>(async (req, { id }) => {
   const user = await requireUser(req);
-  rateLimit(`world-signal:${user.id}`, 120, 60_000);
+  rateLimit(`world-signal:${user.id}`, 400, 60_000);
   const b = await parseBody(
     req,
     z.object({

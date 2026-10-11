@@ -42,4 +42,8 @@ body {
   .chip {
     @apply inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-xs text-ink-200;
   }
+  a.chip,
+  button.chip {
+    @apply hover:border-brand-400 hover:text-white;
+  }
 }

@@ -449,9 +449,9 @@ OUTPUT JSON: {"results":[{"externalId":"…","score":0,"recommended":false,"reas
 // ---------------------------------------------------------------- World cultural reply (paid)
 
 const WorldReplySchema = z.object({
-  text: z.string().min(1).max(800),
-  hold: z.boolean().default(false),
-  holdReason: z.string().max(240).nullable().optional(),
+  text: z.preprocess((v) => (typeof v === 'string' ? v.trim().slice(0, 800) : ''), z.string()),
+  hold: z.preprocess((v) => v === true || v === 'true', z.boolean()),
+  holdReason: z.preprocess((v) => (typeof v === 'string' ? v.slice(0, 240) : null), z.string().nullable()),
 });
 
 export const WORLD_AI_DISCLOSURE =
@@ -463,6 +463,8 @@ export async function generateWorldReply(opts: {
   myLanguage: string;
   peerName: string;
   peerCity: string;
+  myCity: string;
+  prompt: string;
   history: { mine: boolean; text: string }[];
   auto: boolean;
 }) {
@@ -471,16 +473,17 @@ export async function generateWorldReply(opts: {
   const mustHold =
     !!(latest && (detectSensitiveRequest(latest) || detectStopRequest(latest) || looksLikeInjection(latest)));
 
-  const system = `You draft ONE message for a paying Cultural Café user in a one-hour café chat with a stranger from another place. This is cultural exchange, not dating. The user sends it under their own name${opts.auto ? ' (they turned on Autopilot: be conservative and set hold=true whenever unsure)' : ''}.
+  const system = `You draft ONE message for a Cultural Café user in a one-hour café chat with a stranger from another place. This is cultural exchange, not dating. The user sends it under their own name${opts.auto ? ' (automatic answering is on: keep the conversation going for the whole hour)' : ''}.
 
 ${SAFETY_RULES}
 
 WORLD RULES
 - Write ONLY in ${langLine(opts.myLanguage)}. The live page will translate it for the other person.
-- Be a curious, warm guest in their world. Ask about their city, evening, food, language, what they are proud of. Do not flirt, date, or suggest meeting in person.
-- Never invent facts about the user. Only ABOUT THE USER. If you would need a missing fact, set hold=true and holdReason.
+- Be a curious, warm guest. The table topic is: ${opts.prompt || 'everyday life where they live'}. If the chat is empty, answer that topic. Otherwise answer what they said.
+- The user says they are in ${opts.myCity || 'their own city'}. You may mention that city. Do not invent a private life story, a job, or a family.
+- ${opts.auto ? 'Automatic answering is on. Write the next short, warm line and set hold=false. Set hold=true only if they ask for money, a phone number, to meet in person, or to stop.' : 'This is a suggested reply. Always write a sendable line. hold=false unless they ask for money, a phone number, or to stop.'}
+- Do not flirt, date, or suggest meeting in person.
 - Answer what they actually said. One follow-up question at most.
-- hold=true if they ask for money or personal contact details, request to stop, sound distressed, push something sexual, or you cannot answer honestly.
 - ${genderRule(opts.persona)}
 - Output JSON only: {"text":"…","hold":false,"holdReason":null}
 

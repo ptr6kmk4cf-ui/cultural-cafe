@@ -1,6 +1,6 @@
 # Cultural Café
 
-Meet someone from another place for an hour. Write in your own language — they read it in theirs.
+For one hour you write to an adult in another country, in your own language. They read a live translation.
 
 This repo is the Conversa AI product, renamed and re-fronted as **Cultural Café**. The café (the old “World” hour) is the product. The dating-site assistant is still here as a side tool.
 
@@ -64,6 +64,20 @@ npm run test:api
 npm run build:ext && npm run test:e2e
 npm run test:world
 ```
+
+## Production (`culturalcafe.online`)
+
+The live origin is **https://culturalcafe.online**. The domain is at Porkbun and still shows their parking page until DNS points at the host.
+
+1. Create a hosted Postgres (Neon or similar). Use the pooled URL as `DATABASE_URL` and the direct URL as `DIRECT_URL`.
+2. Deploy this repo to [Vercel](https://vercel.com) (Next.js, install from the repo root). Set:
+   - `APP_URL=https://culturalcafe.online`
+   - `DATABASE_URL` / `DIRECT_URL`
+   - `ENCRYPTION_KEY` (32-byte base64)
+   - `AI_PROVIDER` and `AI_API_KEY` (or `mock` for a dry run)
+3. In Vercel → Project → Domains, add `culturalcafe.online` and `www.culturalcafe.online`.
+4. In Porkbun DNS, remove the parking A records and add the records Vercel shows (usually an A record to `10.0.1.1` for the apex, and CNAME `www` → `cname.vercel-dns.com`).
+5. Run `prisma db push` against `DIRECT_URL` once, then open https://culturalcafe.online.
 
 ## Not done yet
 

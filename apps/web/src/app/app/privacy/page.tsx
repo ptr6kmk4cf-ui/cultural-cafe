@@ -27,26 +27,16 @@ export default function PrivacyAccount() {
         <div className="card space-y-3">
           <h2 className="font-semibold text-white">Your data</h2>
           <ul className="list-disc space-y-1 pl-4 text-sm text-ink-300">
-            <li>Messages, memories and notes are encrypted at rest.</li>
-            <li>Rejected profiles are never stored; dismissed matches are deleted.</li>
-            <li>The extension only runs on supported sites — no browsing history is collected.</li>
+            <li>Café chat text goes between your two browsers. We do not keep the words.</li>
+            <li>Your account, café card and language settings are stored so you can come back.</li>
             <li>Photos are private, metadata-stripped, and only you can access them.</li>
           </ul>
           <a className="btn-secondary" href="/api/account/export">Download all my data (JSON)</a>
-          <button
-            className="btn-ghost"
-            onClick={async () => {
-              await api('/api/matches', { method: 'DELETE' });
-              show('Shortlist cleared');
-            }}
-          >
-            Clear my match shortlist
-          </button>
           <Link href="/legal/privacy" className="text-xs text-brand-300">Read the privacy policy →</Link>
         </div>
 
         <div className="card space-y-3">
-          <h2 className="font-semibold text-white">Signed-in devices & extension</h2>
+          <h2 className="font-semibold text-white">Signed-in devices</h2>
           <ul className="divide-y divide-white/5 text-sm">
             {sessions.map((s) => (
               <li key={s.id} className="flex items-center justify-between py-2">
@@ -64,7 +54,7 @@ export default function PrivacyAccount() {
               window.location.href = '/login';
             }}
           >
-            Sign out everywhere (incl. extension)
+            Sign out everywhere
           </button>
         </div>
 
@@ -90,7 +80,7 @@ export default function PrivacyAccount() {
 
         <div className="card space-y-3 border-red-500/30">
           <h2 className="font-semibold text-red-200">Delete account</h2>
-          <p className="text-sm text-ink-300">Permanently deletes your account, contacts, conversations, memories, photos and settings. This cannot be undone.</p>
+          <p className="text-sm text-ink-300">Permanently deletes your account, café card, photos and settings. This cannot be undone.</p>
           <Field label="Password"><input className="input" type="password" value={pw} onChange={(e) => setPw(e.target.value)} /></Field>
           <Field label='Type "DELETE" to confirm'><input className="input" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} /></Field>
           <button

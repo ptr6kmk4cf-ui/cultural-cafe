@@ -5,8 +5,8 @@ import { Alert, Badge, PageHeader, Spinner } from '@/components/ui';
 import { api } from '@/lib/client';
 
 const PLANS = [
-  { id: 'FREE', name: 'Free', price: '€0', features: ['40 AI requests / day', '15 active contacts', '30 photos', 'Openers, replies, translation', 'One-click insertion', 'World: 2 hours/day, you write, we translate'] },
-  { id: 'PREMIUM', name: 'Premium', price: '€14.99 / month', features: ['600 AI requests / day', '500 active contacts', '500 photos', 'Photo-aware match screening', 'Dating Autopilot (authorised platforms only)', 'World: 20 hours/day', 'World: AI drafts a reply (you send)', 'World: run the whole hour (they are told)', 'Priority support'] },
+  { id: 'FREE', name: 'Free', price: '€0', features: ['2 café hours a day', 'Live translation', 'Draft a reply, or let Cultural Café answer the hour'] },
+  { id: 'PREMIUM', name: 'Premium', price: '€14.99 / month', features: ['20 café hours a day', 'Live translation', 'Draft a reply, or let Cultural Café answer the hour', 'Video later'] },
 ];
 
 export default function Subscription() {
@@ -34,7 +34,7 @@ export default function Subscription() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Subscription" subtitle="Billing is handled securely by Stripe. Cancel any time." />
+      <PageHeader title="Plan" subtitle="More café hours when you need them. Video comes later." />
       {status === 'success' && <Alert kind="success">Thanks! Your plan updates as soon as Stripe confirms the payment.</Alert>}
       {error && <Alert kind="warning">{error}</Alert>}
       <div className="grid gap-4 md:grid-cols-2">

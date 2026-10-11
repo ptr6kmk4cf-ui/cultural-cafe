@@ -74,7 +74,7 @@ export default function Photos() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="My photos" subtitle="A private library. Only photos you approve can be suggested by the AI, and nothing is ever sent without your confirmation." />
+      <PageHeader title="Photo" subtitle="Optional. Pick one for your café card so the other person can see a face." />
       {error && <Alert kind="error">{error}</Alert>}
 
       <div className="flex flex-wrap items-center gap-2">

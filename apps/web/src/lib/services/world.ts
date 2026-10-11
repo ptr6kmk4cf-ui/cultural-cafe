@@ -1,8 +1,8 @@
 import type { WorldConversation, WorldInvite, WorldMessage, WorldProfile } from '@prisma/client';
-import { languageName } from '@conversa/shared';
+import { cafePromptFor, languageName } from '@conversa/shared';
 import type { AuthUser } from '../auth';
 import { ageFromBirthDate } from '../auth';
-import { decrypt, encrypt } from '../crypto';
+import { decrypt, encrypt, encryptOptional } from '../crypto';
 import { db } from '../db';
 import { HttpError, notFound } from '../http';
 import { PLAN_LIMITS, assertWorldQuota } from '../plans';
@@ -53,10 +53,15 @@ export async function isBlocked(a: string, b: string) {
 export async function expireStale() {
   const now = new Date();
   await db.worldInvite.updateMany({ where: { status: 'PENDING', expiresAt: { lt: now } }, data: { status: 'EXPIRED' } });
-  await db.worldConversation.updateMany({
+  const due = await db.worldConversation.findMany({
     where: { status: 'ACTIVE', endsAt: { lt: now } },
-    data: { status: 'ENDED', endedAt: now },
+    select: { id: true },
   });
+  if (due.length) {
+    const ids = due.map((c) => c.id);
+    await db.worldConversation.updateMany({ where: { id: { in: ids } }, data: { status: 'ENDED', endedAt: now } });
+    await db.worldMessage.deleteMany({ where: { conversationId: { in: ids } } });
+  }
   await db.worldProfile.updateMany({
     where: { available: true, lastSeenAt: { lt: new Date(Date.now() - WORLD_QUEUE_FRESH_MS) } },
     data: { available: false, queuedAt: null },
@@ -88,29 +93,54 @@ export async function peerId(c: WorldConversation, me: string) {
   return c.userAId === me ? c.userBId : c.userAId;
 }
 
-export async function publicCard(userId: string, viewerId?: string) {
-  const u = await db.user.findUnique({
-    where: { id: userId },
-    include: { personality: true, language: true, worldProfile: true },
-  });
-  if (!u?.worldProfile?.optedIn) return null;
-  if (viewerId && (await isBlocked(userId, viewerId))) return null;
-  const online = Date.now() - u.worldProfile.lastSeenAt.getTime() < WORLD_ONLINE_MS;
+function cardFromUser(
+  u: {
+    id: string;
+    name: string;
+    birthDate: Date;
+    personality: { displayName: string | null; interests: string[] } | null;
+    language: { myLanguage: string; preferredLanguages: string[] } | null;
+    worldProfile: { city: string; country: string; bio: string; portraitPhotoId: string | null; lastSeenAt: Date; available: boolean } | null;
+  },
+) {
+  const online = u.worldProfile ? Date.now() - u.worldProfile.lastSeenAt.getTime() < WORLD_ONLINE_MS : false;
   return {
     id: u.id,
     name: firstName(u.personality?.displayName || u.name),
     age: ageFromBirthDate(u.birthDate),
-    city: u.worldProfile.city,
-    country: u.worldProfile.country,
-    bio: decrypt(u.worldProfile.bio),
+    city: u.worldProfile?.city ?? '',
+    country: u.worldProfile?.country ?? '',
+    bio: u.worldProfile ? decrypt(u.worldProfile.bio) : '',
     language: u.language?.myLanguage ?? 'en',
     languageLabel: languageName(u.language?.myLanguage ?? 'en'),
     languages: u.language?.preferredLanguages ?? [u.language?.myLanguage ?? 'en'],
     interests: u.personality?.interests ?? [],
-    portraitUrl: u.worldProfile.portraitPhotoId ? `/api/world/people/${u.id}/portrait` : null,
+    portraitUrl: u.worldProfile?.portraitPhotoId ? `/api/world/people/${u.id}/portrait` : null,
     online,
-    available: u.worldProfile.available && online,
+    available: !!(u.worldProfile?.available && online),
   };
+}
+
+async function loadUserCard(userId: string) {
+  return db.user.findUnique({
+    where: { id: userId },
+    include: { personality: true, language: true, worldProfile: true },
+  });
+}
+
+export async function publicCard(userId: string, viewerId?: string) {
+  const u = await loadUserCard(userId);
+  if (!u?.worldProfile?.optedIn) return null;
+  if (viewerId && (await isBlocked(userId, viewerId))) return null;
+  return cardFromUser(u);
+}
+
+/** First name and city for a café hour, even if they later left the Café. */
+export async function cafePeerCard(userId: string, viewerId?: string) {
+  const u = await loadUserCard(userId);
+  if (!u) return null;
+  if (viewerId && (await isBlocked(userId, viewerId))) return null;
+  return cardFromUser(u);
 }
 
 export function serializeProfile(p: WorldProfile) {
@@ -164,7 +194,8 @@ export async function serializeConversation(c: WorldConversation, me: string) {
     offerer: c.userAId === me,
     transport: 'webrtc' as const,
     ice: worldIceServers(),
-    peer: await publicCard(await peerId(c, me), me),
+    prompt: cafePromptFor(c.id),
+    peer: await cafePeerCard(await peerId(c, me), me),
   };
 }
 
@@ -184,7 +215,7 @@ export function serializeMessage(m: WorldMessage, me: string) {
 
 export async function joinQueue(user: AuthUser) {
   const profile = await getOrCreateProfile(user.id);
-  if (!profile.optedIn) throw new HttpError(400, 'Turn on World and add a city before matching.', 'world_opt_in');
+  if (!profile.optedIn) throw new HttpError(400, 'Join the Café and add a city before matching.', 'world_opt_in');
   if (!profile.city.trim()) throw new HttpError(400, 'Add the city you are in (self-stated) before matching.', 'world_city');
   const active = await activeConversation(user.id);
   if (active) return { state: 'chatting' as const, conversation: await serializeConversation(active, user.id) };
@@ -328,14 +359,20 @@ export async function endConversation(userId: string, conversationId: string) {
   return db.worldConversation.update({
     where: { id: c.id },
     data: { status: 'ENDED', endedAt: new Date(), endedById: userId },
+  }).then(async (ended) => {
+    await db.worldMessage.deleteMany({ where: { conversationId: c.id } });
+    return ended;
   });
 }
 
-/** Translate + safety flag only. The words are not stored and are not delivered — the browsers send them over WebRTC. */
+/** Translate the line into the other person's language and keep it until the hour ends. */
 export async function prepareWorldMessage(user: AuthUser, conversationId: string, text: string) {
   const c = await requireParticipant(user.id, conversationId);
   if (c.status !== 'ACTIVE' || c.endsAt < new Date()) {
-    if (c.status === 'ACTIVE') await db.worldConversation.update({ where: { id: c.id }, data: { status: 'ENDED', endedAt: new Date() } });
+    if (c.status === 'ACTIVE') {
+      await db.worldConversation.update({ where: { id: c.id }, data: { status: 'ENDED', endedAt: new Date() } });
+      await db.worldMessage.deleteMany({ where: { conversationId: c.id } });
+    }
     throw new HttpError(409, 'This hour is over.', 'ended');
   }
   const other = await peerId(c, user.id);
@@ -347,23 +384,54 @@ export async function prepareWorldMessage(user: AuthUser, conversationId: string
   if (detected !== otherLang) {
     try {
       const t = await translateText(user, text, otherLang);
-      translation = t.translation;
-      translationLang = otherLang;
-    } catch {
+      translation = t.translation?.trim() || null;
+      translationLang = translation ? otherLang : null;
+    } catch (err) {
+      if (err instanceof HttpError) throw err;
       translation = null;
     }
+    if (!translation) throw new HttpError(503, 'Could not translate that line. Tap Send again.', 'translate_failed');
   }
+  const row = await db.worldMessage.create({
+    data: {
+      conversationId,
+      senderId: user.id,
+      text: encrypt(text),
+      language: detected,
+      translation: encryptOptional(translation),
+      translationLang,
+      flagged: detectSensitiveRequest(text),
+    },
+  });
   return {
-    id: `p2p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    id: row.id,
     text,
     language: detected,
     translation,
     translationLang,
-    flagged: detectSensitiveRequest(text),
-    createdAt: new Date().toISOString(),
-    stored: false,
-    transport: 'webrtc' as const,
+    flagged: row.flagged,
+    createdAt: row.createdAt.toISOString(),
+    mine: true,
   };
+}
+
+export async function listWorldMessages(userId: string, conversationId: string) {
+  await requireParticipant(userId, conversationId);
+  const rows = await db.worldMessage.findMany({
+    where: { conversationId },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+  });
+  return rows.reverse().map((m) => ({
+    id: m.id,
+    mine: m.senderId === userId,
+    text: decrypt(m.text),
+    language: m.language,
+    translation: m.translation ? decrypt(m.translation) : null,
+    translationLang: m.translationLang,
+    flagged: m.flagged,
+    createdAt: m.createdAt.toISOString(),
+  }));
 }
 
 export async function postSignal(userId: string, conversationId: string, type: string, payload: string) {
@@ -377,10 +445,10 @@ export async function pullSignals(userId: string, conversationId: string, after?
   const since = after && !Number.isNaN(Date.parse(after)) ? new Date(after) : new Date(Date.now() - 90_000);
   const rows = await db.worldSignal.findMany({
     where: { conversationId, fromId: { not: userId }, createdAt: { gte: since } },
-    orderBy: { createdAt: 'asc' },
-    take: 40,
+    orderBy: { createdAt: 'desc' },
+    take: 80,
   });
-  return rows.map((s) => ({ id: s.id, type: s.type, payload: s.payload, createdAt: s.createdAt.toISOString() }));
+  return rows.reverse().map((s) => ({ id: s.id, type: s.type, payload: s.payload, createdAt: s.createdAt.toISOString() }));
 }
 
 export async function listPeople(viewerId: string) {

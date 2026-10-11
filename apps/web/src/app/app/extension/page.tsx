@@ -65,7 +65,7 @@ export default function ExtensionPage() {
         <div className="card space-y-3">
           <h2 className="font-semibold text-white">2 · Connect</h2>
           {connected ? (
-            <Alert kind="success">Extension connected. Open the demo dating site at <a className="underline" href="http://localhost:4000" target="_blank" rel="noreferrer">localhost:4000</a>.</Alert>
+            <Alert kind="success">Extension connected. Open <a className="underline" href="/app/download">Download apps</a> if you still need the file, then use it on a supported site.</Alert>
           ) : (
             <button className="btn-primary" disabled={!detected} onClick={connect}>Connect extension to my account</button>
           )}

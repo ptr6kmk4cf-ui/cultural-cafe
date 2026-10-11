@@ -15,3 +15,6 @@ next-env.d.ts
 .cache
 release
 apps/web/public/downloads
+.vercel
+.env*
+.neon

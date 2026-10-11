@@ -19,14 +19,14 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
   FREE: {
     label: 'Free',
     priceLabel: '€0',
-    aiRequestsPerDay: 40,
+    aiRequestsPerDay: 300,
     maxPhotos: 30,
     maxActiveContacts: 15,
     autopilot: false,
     photoAnalysis: false,
     worldConversationsPerDay: 2,
-    worldAssist: false,
-    worldAutopilot: false,
+    worldAssist: true,
+    worldAutopilot: true,
   },
   PREMIUM: {
     label: 'Premium',
@@ -74,7 +74,7 @@ export async function assertWorldQuota(userId: string, plan: Plan) {
 
 export async function assertAiQuota(userId: string, plan: Plan) {
   const since = new Date(Date.now() - 86400_000);
-  const used = await db.aiUsage.count({ where: { userId, createdAt: { gte: since } } });
+  const used = await db.aiUsage.count({ where: { userId, createdAt: { gte: since }, success: true } });
   if (used >= PLAN_LIMITS[plan].aiRequestsPerDay) {
     throw new HttpError(
       402,

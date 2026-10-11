@@ -12,24 +12,22 @@ export default function Privacy() {
       <h2 className="text-lg font-semibold text-white">What we store</h2>
       <ul className="list-disc space-y-1 pl-5">
         <li>Account data: email, name, date of birth (to confirm you are 18+), hashed password.</li>
-        <li>Your settings: personality, language and match preferences.</li>
-        <li>Contacts you add or track, their conversation history and memories — encrypted at rest (AES-256-GCM).</li>
-        <li>Shortlisted matches only. Profiles that are screened and not recommended are never stored.</li>
-        <li>Photos you upload, with location and other metadata removed, in private storage.</li>
-        <li>AI usage counters (feature, tokens) for quotas and billing — not message content.</li>
+        <li>Your café card: city, country, a few words, optional photo, language.</li>
+        <li>The lines of a café hour, deleted when the hour ends. Also who met, when, and the table topic.</li>
+        <li>Photos you upload, with location and other metadata removed.</li>
       </ul>
       <h2 className="text-lg font-semibold text-white">What we never do</h2>
       <ul className="list-disc space-y-1 pl-5">
-        <li>Collect your general browsing activity. The extension only runs on supported sites.</li>
+        <li>Keep the chat text after the hour ends. Lines are deleted when the hour ends.</li>
         <li>Sell personal data, or use your conversations to train models.</li>
-        <li>Infer sensitive characteristics (health, religion, ethnicity, orientation…) from profiles or photos.</li>
+        <li>Infer sensitive characteristics from your card or photos.</li>
       </ul>
       <h2 className="text-lg font-semibold text-white">Third parties</h2>
-      <p>Text (and, if you enable photo analysis, downscaled public profile photos) is sent to the configured AI provider to generate suggestions. Payments are processed by Stripe.</p>
+      <p>Lines you send are translated by the AI Gateway on your Neon project. They stay for this hour so both of you can read them, then they are deleted.</p>
       <h2 className="text-lg font-semibold text-white">Your rights</h2>
-      <p>You can review, correct, export and delete your data at any time from Privacy &amp; Account, including per-contact memory export and full account deletion.</p>
+      <p>You can export and delete your account at any time from Account.</p>
       <h2 className="text-lg font-semibold text-white">People you talk to</h2>
-      <p>Contacts&apos; messages are processed to help you reply. Use Cultural Café respectfully, honour requests to stop, and disclose AI assistance where the platform or local law requires it.</p>
+      <p>Treat people in the Café with respect. Honour a request to stop. This is not dating.</p>
     </main>
   );
 }

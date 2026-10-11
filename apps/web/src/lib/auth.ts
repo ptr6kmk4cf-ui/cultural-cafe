@@ -58,8 +58,23 @@ async function userFromToken(token: string): Promise<AuthUser | null> {
   return session.user;
 }
 
+export const PRODUCTION_ORIGIN = 'https://culturalcafe.online';
+
 function appOrigin() {
-  return new URL(process.env.APP_URL || 'http://localhost:3000').origin;
+  return new URL(process.env.APP_URL || (process.env.NODE_ENV === 'production' ? PRODUCTION_ORIGIN : 'http://localhost:3000')).origin;
+}
+
+function allowedOrigins() {
+  const origin = appOrigin();
+  const allowed = new Set([origin]);
+  try {
+    const u = new URL(origin);
+    if (u.hostname.startsWith('www.')) allowed.add(`${u.protocol}//${u.hostname.slice(4)}`);
+    else if (u.hostname !== 'localhost' && u.hostname !== '127.0.0.1') allowed.add(`${u.protocol}//www.${u.hostname}`);
+  } catch {
+    /* ignore */
+  }
+  return allowed;
 }
 
 /**
@@ -78,7 +93,7 @@ export async function requireUser(req: NextRequest): Promise<AuthUser> {
   if (!token) throw new HttpError(401, 'Not signed in', 'unauthenticated');
   if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     const origin = req.headers.get('origin');
-    if (origin && origin !== appOrigin()) throw new HttpError(403, 'Cross-origin request blocked', 'csrf');
+    if (origin && !allowedOrigins().has(origin)) throw new HttpError(403, 'Cross-origin request blocked', 'csrf');
   }
   const user = await userFromToken(token);
   if (!user) throw new HttpError(401, 'Session expired', 'unauthenticated');

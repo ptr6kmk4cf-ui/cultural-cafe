@@ -1,3 +1,8 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+
 /** @type {import('next').NextConfig} */
 const securityHeaders = [
   { key: 'X-Frame-Options', value: 'DENY' },
@@ -20,11 +25,25 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  outputFileTracingRoot: path.join(here, '../..'),
   transpilePackages: ['@conversa/shared'],
   serverExternalPackages: ['sharp', 'bcryptjs'],
   poweredByHeader: false,
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
+  },
+  async redirects() {
+    return [
+      { source: '/app/matches', destination: '/app/world', permanent: false },
+      { source: '/app/shortlist', destination: '/app/world', permanent: false },
+      { source: '/app/contacts/:path*', destination: '/app/world', permanent: false },
+      { source: '/app/assistant', destination: '/app/world', permanent: false },
+      { source: '/app/personality', destination: '/app/world', permanent: false },
+      { source: '/app/autopilot', destination: '/app/world', permanent: false },
+      { source: '/app/extension', destination: '/app', permanent: false },
+      { source: '/app/download', destination: '/app', permanent: false },
+      { source: '/app/conversations/:id', destination: '/app/conversations', permanent: false },
+    ];
   },
 };
 

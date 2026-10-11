@@ -6,15 +6,13 @@ import { getCurrentUser } from '@/lib/auth';
 
 const SHOWCASE = ['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'ar', 'ru', 'tr', 'pl', 'zh', 'ja', 'ko', 'hi', 'he', 'uk', 'vi', 'th', 'id'];
 
+const LINE = 'For one hour you write to an adult in another country, in your own language.';
+
 const FEATURES = [
-  { t: 'The Café', d: 'Sit down with someone from another place for one hour. Write in your language — they read it in theirs. Both people accept before anything is said.' },
-  { t: 'Live translation', d: 'Each person writes as they speak. Captions appear in the other language. The original is one tap away when a line feels off.' },
-  { t: 'A pleasant surprise', d: 'Meet someone now, or pick a face. The person can be a surprise. Safety is not: adults only, mutual accept, block and report.' },
-  { t: 'You stay in control', d: 'No phone numbers, emails or locations are shared by default. The chat is a direct link between your two browsers and is not stored.' },
-  { t: 'Reply assistant', d: 'When you want help writing — in the café or on a dating site — drafts stay in your voice. You press send.' },
-  { t: `${LANGUAGES.length} languages`, d: 'Pick the languages you use. Auto-detect, translate & reply, including right-to-left Arabic, Hebrew, Persian and Urdu.' },
-  { t: 'Private photos', d: 'Your approved photos, suggested only when you ask. Location metadata stripped. Private photos never go into the café.' },
-  { t: 'Dating tools, if you want them', d: 'Screen profiles, write openers, keep memory. A side tool for sites you already use — not the product.' },
+  { t: 'One hour, then it ends', d: 'A timed text chat. You get a starting question — a Sunday, a market, a food from their town. You can leave sooner.' },
+  { t: 'Live translation', d: 'You type as you speak. They see it in their language. One tap shows the original if a line feels off.' },
+  { t: 'Someone in another country', d: 'A first name, a city they typed, maybe a photo. Both of you tap accept before the first message.' },
+  { t: 'Not dating', d: 'Adults 18+ only. No phone numbers or emails. Lines stay for this hour so you can both read them, then they are deleted.' },
 ];
 
 export default async function Landing() {
@@ -30,12 +28,12 @@ export default async function Landing() {
       </nav>
 
       <section className="py-20 text-center">
-        <p className="chip mx-auto mb-6">For adults 18+ · Meet across cultures · Write in your own language</p>
-        <h1 className="mx-auto max-w-3xl text-5xl font-extrabold leading-tight tracking-tight text-white">
-          Become a tourist in <span className="bg-gradient-to-r from-brand-300 to-amber-200 bg-clip-text text-transparent">someone else’s everyday life</span>.
+        <p className="chip mx-auto mb-6">Adults 18+ · Your language · Their language</p>
+        <h1 className="mx-auto max-w-4xl text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl">
+          {LINE}
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-lg text-ink-300">
-          Cultural Café is a short, translated conversation with a person from another place. You keep your language. They keep theirs. An hour later, you have seen a little of how they live.
+          They read a live translation. You read theirs. This is a conversation about everyday life — not dating, not a language class.
         </p>
         <div className="mt-8 flex justify-center gap-3">
           <Link href="/register" className="btn-primary px-6 py-3 text-base">Join the Café</Link>
@@ -43,18 +41,18 @@ export default async function Landing() {
         </div>
         <div className="mt-8 flex flex-wrap justify-center gap-2">
           {SHOWCASE.map((code) => LANGUAGES.find((l) => l.code === code)!).map((l) => (
-            <span key={l.code} className="chip" dir={l.rtl ? 'rtl' : 'ltr'}>{l.nativeName}</span>
+            <Link key={l.code} href="/register" className="chip" dir={l.rtl ? 'rtl' : 'ltr'}>{l.nativeName}</Link>
           ))}
-          <span className="chip">+{LANGUAGES.length - SHOWCASE.length} more languages</span>
+          <Link href="/register" className="chip">+{LANGUAGES.length - SHOWCASE.length} more languages</Link>
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2">
         {FEATURES.map((f) => (
-          <div key={f.t} className="card">
+          <Link key={f.t} href="/register" className="card block transition hover:border-brand-500/40">
             <h3 className="font-semibold text-white">{f.t}</h3>
             <p className="mt-2 text-sm text-ink-300">{f.d}</p>
-          </div>
+          </Link>
         ))}
       </section>
 

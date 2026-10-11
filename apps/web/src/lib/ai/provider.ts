@@ -33,6 +33,19 @@ export interface AiResult {
 export class AiConfigError extends Error {}
 
 export function aiConfig() {
+  const neonToken = process.env.NEON_AI_GATEWAY_TOKEN || '';
+  const neonHost = (process.env.NEON_AI_GATEWAY_BASE_URL || '').replace(/\/$/, '');
+  if (neonToken && neonHost) {
+    return {
+      provider: 'openai-compatible',
+      apiKey: neonToken,
+      model: process.env.AI_MODEL || 'claude-haiku-4-5',
+      visionModel: process.env.AI_VISION_MODEL || '',
+      baseUrl: `${neonHost}/v1`,
+      isMock: false,
+    };
+  }
+
   const provider = (process.env.AI_PROVIDER || 'openai').toLowerCase();
   return {
     provider,
@@ -67,12 +80,33 @@ async function postJson(url: string, headers: Record<string, string>, body: unkn
   }
 }
 
+function asCompletion(data: Record<string, any>, provider: string, model: string): AiResult {
+  return {
+    text: data.choices?.[0]?.message?.content ?? '',
+    provider,
+    model,
+    inputTokens: data.usage?.prompt_tokens ?? 0,
+    outputTokens: data.usage?.completion_tokens ?? 0,
+  };
+}
+
+/** Claude on the Neon gateway rejects OpenAI json mode and sometimes temperature. */
+function claudeModel(model: string) {
+  return /claude/i.test(model);
+}
+
 async function openAiComplete(req: AiRequest, cfg: ReturnType<typeof aiConfig>): Promise<AiResult> {
   const base = (cfg.provider === 'openai-compatible' ? cfg.baseUrl : cfg.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '');
   if (!base) throw new AiConfigError('AI_BASE_URL is required for openai-compatible providers');
   const model = req.vision && cfg.visionModel ? cfg.visionModel : cfg.model;
+  const claude = claudeModel(model);
   const messages = [
-    { role: 'system', content: req.system },
+    {
+      role: 'system',
+      content:
+        req.system +
+        (req.json && claude ? '\n\nRespond with a single JSON object only, no prose, no code fences.' : ''),
+    },
     ...req.messages.map((m) => ({
       role: m.role,
       content:
@@ -85,24 +119,31 @@ async function openAiComplete(req: AiRequest, cfg: ReturnType<typeof aiConfig>):
             ),
     })),
   ];
-  const data = await postJson(
-    `${base}/chat/completions`,
-    cfg.apiKey ? { authorization: `Bearer ${cfg.apiKey}` } : {},
-    {
-      model,
-      messages,
-      max_tokens: req.maxTokens ?? 1200,
-      temperature: req.temperature ?? 0.8,
-      ...(req.json ? { response_format: { type: 'json_object' } } : {}),
-    },
-  );
-  return {
-    text: data.choices?.[0]?.message?.content ?? '',
-    provider: cfg.provider,
+  const url = `${base}/chat/completions`;
+  const headers: Record<string, string> = cfg.apiKey ? { authorization: `Bearer ${cfg.apiKey}` } : {};
+  const body: Record<string, unknown> = {
     model,
-    inputTokens: data.usage?.prompt_tokens ?? 0,
-    outputTokens: data.usage?.completion_tokens ?? 0,
+    messages,
+    max_tokens: req.maxTokens ?? 1200,
   };
+  if (!claude) body.temperature = req.temperature ?? 0.8;
+  if (req.json && !claude) body.response_format = { type: 'json_object' };
+  try {
+    return asCompletion(await postJson(url, headers, body), cfg.provider, model);
+  } catch (err) {
+    if (!(err instanceof Error) || !err.message.startsWith('AI provider error 400:')) throw err;
+    const plain = messages.map((m, i) =>
+      i === 0 && req.json && typeof m.content === 'string' && !m.content.includes('single JSON object')
+        ? { ...m, content: `${m.content}\n\nRespond with a single JSON object only, no prose, no code fences.` }
+        : m,
+    );
+    const retry: Record<string, unknown> = {
+      model,
+      messages: plain,
+      max_tokens: req.maxTokens ?? 1200,
+    };
+    return asCompletion(await postJson(url, headers, retry), cfg.provider, model);
+  }
 }
 
 async function anthropicComplete(req: AiRequest, cfg: ReturnType<typeof aiConfig>): Promise<AiResult> {

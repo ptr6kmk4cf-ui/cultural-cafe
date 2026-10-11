@@ -49,8 +49,7 @@ export default function RegisterPage() {
         <input type="checkbox" className="mt-1" checked={f.acceptTerms} onChange={set('acceptTerms')} required />
         <span>
           I accept the <Link className="text-brand-300 underline" href="/legal/terms" target="_blank">Terms</Link> and{' '}
-          <Link className="text-brand-300 underline" href="/legal/privacy" target="_blank">Privacy Policy</Link>, and I will treat people in the Café
-          with respect. If I use the dating assistant, I will follow those sites&apos; rules.
+          <Link className="text-brand-300 underline" href="/legal/privacy" target="_blank">Privacy Policy</Link>, and I will treat people in the Café with respect.
         </span>
       </label>
       <button className="btn-primary w-full" disabled={busy}>{busy ? 'Creating…' : 'Create account'}</button>

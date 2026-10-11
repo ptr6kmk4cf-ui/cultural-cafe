@@ -19,7 +19,7 @@ export const POST = route(async (req) => {
     customer = c.id as string;
     await db.user.update({ where: { id: user.id }, data: { stripeCustomerId: customer } });
   }
-  const app = process.env.APP_URL || 'http://localhost:3000';
+  const app = process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://culturalcafe.online' : 'http://localhost:3000');
   const dest = returnTo || '/app/subscription';
   const session = await stripe('checkout/sessions', {
     mode: 'subscription',
