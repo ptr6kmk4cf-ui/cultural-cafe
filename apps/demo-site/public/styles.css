@@ -1,0 +1,51 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif; background: #faf7f5; color: #2b2330; }
+a { color: inherit; }
+.demo-banner { background: #2b2330; color: #ffd9e3; font-size: 12px; padding: 6px 16px; text-align: center; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: #fff; border-bottom: 1px solid #eee; position: sticky; top: 0; z-index: 5; }
+.logo { font-weight: 800; font-size: 20px; color: #e8436b; text-decoration: none; }
+nav a { margin-left: 18px; text-decoration: none; font-weight: 600; color: #6b5f73; }
+nav a.active { color: #e8436b; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px; }
+.filters { display: flex; gap: 12px; align-items: center; margin-bottom: 18px; font-size: 14px; }
+.filters input { width: 64px; padding: 6px; border: 1px solid #ddd; border-radius: 8px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 18px; }
+.card { background: #fff; border-radius: 18px; overflow: hidden; box-shadow: 0 4px 18px rgba(0,0,0,.06); display: flex; flex-direction: column; position: relative; }
+.card img { width: 100%; aspect-ratio: 4/5; object-fit: cover; display: block; }
+.card .body { padding: 12px 14px 14px; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.card h3 { margin: 0; font-size: 18px; }
+.muted { color: #8a7f90; font-size: 13px; }
+.bio { font-size: 13px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.tags { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; padding: 0; margin: 0; }
+.tags li { background: #fbe6ec; color: #b2244b; padding: 2px 8px; border-radius: 99px; font-size: 11px; }
+.row { display: flex; gap: 8px; margin-top: auto; }
+.btn { border: 0; border-radius: 10px; padding: 8px 14px; font-weight: 700; cursor: pointer; background: #e8436b; color: #fff; text-decoration: none; font-size: 14px; display: inline-block; text-align: center; }
+.btn.secondary { background: #f1ecef; color: #2b2330; }
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; place-items: center; z-index: 10; }
+.modal.open { display: grid; }
+.modal .panel { background: #fff; border-radius: 18px; padding: 20px; width: min(480px, 92vw); }
+.composer { display: flex; flex-direction: column; gap: 8px; }
+.composer textarea { width: 100%; min-height: 80px; border: 1px solid #ddd; border-radius: 12px; padding: 10px; font: inherit; resize: vertical; }
+.composer .attach { font-size: 12px; color: #8a7f90; display: flex; gap: 8px; align-items: center; }
+.composer .preview img { max-height: 90px; border-radius: 8px; }
+.profile { display: grid; grid-template-columns: 360px 1fr; gap: 28px; }
+.profile .photos img { width: 100%; border-radius: 18px; margin-bottom: 12px; }
+.profile dl { display: grid; grid-template-columns: 140px 1fr; gap: 6px; font-size: 14px; }
+.profile dt { color: #8a7f90; }
+.messages { display: grid; grid-template-columns: 280px 1fr; gap: 0; background: #fff; border-radius: 18px; overflow: hidden; min-height: 70vh; box-shadow: 0 4px 18px rgba(0,0,0,.06); }
+.threads { border-right: 1px solid #eee; overflow-y: auto; }
+.thread-link { display: flex; gap: 10px; align-items: center; padding: 12px; text-decoration: none; border-bottom: 1px solid #f4f0f2; }
+.thread-link.active { background: #fdf0f4; }
+.thread-link img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
+.thread-link .unread { width: 9px; height: 9px; border-radius: 50%; background: #e8436b; margin-left: auto; }
+.thread-link .snippet { font-size: 12px; color: #8a7f90; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px; }
+.convo { display: flex; flex-direction: column; }
+.convo-head { padding: 12px 16px; border-bottom: 1px solid #eee; font-weight: 700; }
+.convo-body { flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; max-height: 55vh; }
+.msg { max-width: 70%; padding: 8px 12px; border-radius: 14px; font-size: 14px; white-space: pre-wrap; }
+.msg.in { background: #f1ecef; align-self: flex-start; }
+.msg.out { background: #e8436b; color: #fff; align-self: flex-end; }
+.msg img { max-width: 200px; border-radius: 10px; display: block; margin-bottom: 4px; }
+.msg time { display: block; font-size: 10px; opacity: .6; margin-top: 2px; }
+.convo .composer { border-top: 1px solid #eee; padding: 12px; }
+@media (max-width: 760px) { .profile, .messages { grid-template-columns: 1fr; } }

@@ -1,0 +1,479 @@
+// Conversa AI — database schema
+// Private free-text fields (messages, memories, notes, profile summaries) are stored
+// encrypted at the application layer (AES-256-GCM, see src/lib/crypto.ts) and are
+// marked "[enc]" below.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url       = env("DATABASE_URL")
+  // Hosted providers (Neon, Supabase…) give a pooled URL for the app and a direct URL for schema changes.
+  // Locally both point to the same embedded database.
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Plan {
+  FREE
+  PREMIUM
+}
+
+enum SessionKind {
+  WEB
+  EXTENSION
+}
+
+enum ContactSource {
+  MANUAL
+  MATCH
+  TRACKED // conversation picked up from a supported site by the extension
+}
+
+enum ContactStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum LanguageMode {
+  SELECTED  // always write in the chosen language
+  AUTO      // reply in the language the contact writes in
+  TRANSLATE // show incoming in my language, reply in contact's language
+}
+
+enum MessageDirection {
+  IN
+  OUT
+}
+
+enum MemoryKind {
+  INTEREST
+  FACT
+  TOPIC
+  QUESTION   // unanswered question
+  COMMITMENT
+  PHOTO_SHARED
+  PREFERENCE
+}
+
+enum MemorySource {
+  AI
+  USER
+}
+
+enum MatchStatus {
+  SHORTLISTED
+  CONTACTED
+}
+
+enum PhotoCategory {
+  GENERAL
+  TRAVEL
+  HOBBY
+  FOOD
+  PET
+  PORTRAIT
+  PRIVATE // never suggested by the AI, never auto-shared
+}
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  passwordHash   String
+  name           String
+  birthDate      DateTime
+  adultConfirmed Boolean   @default(false)
+  termsAcceptedAt DateTime?
+  role           Role      @default(USER)
+  plan           Plan      @default(FREE)
+  stripeCustomerId String? @unique
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  sessions      Session[]
+  personality   PersonalityProfile?
+  language      LanguageSettings?
+  preferences   MatchPreferences?
+  autopilot     AutopilotSettings?
+  contacts      Contact[]
+  matches       MatchCandidate[]
+  albums        Album[]
+  photos        Photo[]
+  aiUsage       AiUsage[]
+  subscription  Subscription?
+  autopilotEvents AutopilotEvent[]
+  supportTickets SupportTicket[]
+
+  worldProfile     WorldProfile?
+  worldBlocksMade  WorldBlock[]        @relation("WorldBlocker")
+  worldBlocksGot   WorldBlock[]        @relation("WorldBlocked")
+  worldInvitesFrom WorldInvite[]       @relation("WorldInviteFrom")
+  worldInvitesTo   WorldInvite[]       @relation("WorldInviteTo")
+  worldConvA       WorldConversation[] @relation("WorldConvA")
+  worldConvB       WorldConversation[] @relation("WorldConvB")
+  worldMessages    WorldMessage[]
+  worldReports     WorldReport[]       @relation("WorldReporter")
+}
+
+model Session {
+  id         String      @id @default(cuid())
+  userId     String
+  tokenHash  String      @unique // sha256 of the bearer/cookie token; raw token never stored
+  kind       SessionKind @default(WEB)
+  label      String?
+  expiresAt  DateTime
+  lastUsedAt DateTime    @default(now())
+  createdAt  DateTime    @default(now())
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PersonalityProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  displayName    String   @default("")
+  aboutMe        String   @default("") // [enc] facts the AI may use about the user
+  interests      String[] @default([])
+  intentions     String   @default("")
+  personality    String   @default("")
+  style          String   @default("natural") // natural|funny|charming|romantic|confident|casual|intellectual|playful
+  humorLevel     Int      @default(2) // 0..4
+  flirtingLevel  Int      @default(1) // 0..4
+  formality      Int      @default(1) // 0 casual .. 3 formal
+  messageLength  String   @default("medium") // short|medium|long
+  useEmojis      Boolean  @default(true)
+  topicsToAvoid  String[] @default([])
+  boundaries     String   @default("") // [enc]
+  grammaticalGender String @default("unspecified") // masculine|feminine|neutral|unspecified — grammar only (fr/es/it/pt/ar…)
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model LanguageSettings {
+  id                 String       @id @default(cuid())
+  userId             String       @unique
+  myLanguage         String       @default("en") // language the user reads
+  defaultReplyLanguage String     @default("en")
+  defaultMode        LanguageMode @default(AUTO)
+  preferredLanguages String[]     @default(["en"])
+  updatedAt          DateTime     @updatedAt
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model MatchPreferences {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  ageMin            Int      @default(18)
+  ageMax            Int      @default(99)
+  location          String   @default("")
+  maxDistanceKm     Int      @default(100)
+  relationshipGoals String[] @default([])
+  interests         String[] @default([])
+  lifestyle         String[] @default([])
+  physicalPreferences String @default("") // compared only with self-stated profile fields, never inferred from photos
+  dealbreakers      String[] @default([])
+  analyzePhotos     Boolean  @default(true)
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Contact {
+  id              String        @id @default(cuid())
+  userId          String
+  name            String
+  source          ContactSource @default(MANUAL)
+  platform        String?       // e.g. "conversa-demo"; null for purely manual contacts
+  externalId      String?       // profile/thread id on the platform
+  profileNotes    String        @default("") // [enc] optional profile details
+  objective       String        @default("")
+  language        String?       // contact's language (null = default)
+  languageMode    LanguageMode?
+  style           String?       // per-contact override of the user's style
+  status          ContactStatus @default(ACTIVE)
+  doNotContact    Boolean       @default(false) // set when the contact declines / asks to stop
+  humanTakeover   Boolean       @default(false) // autopilot paused for this contact
+  autopilotAllowed Boolean      @default(true)
+  lastActivityAt  DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages        Message[]
+  memories        MemoryItem[]
+
+  @@unique([userId, platform, externalId]) // duplicate-contact prevention
+  @@index([userId, status])
+}
+
+model Message {
+  id              String           @id @default(cuid())
+  contactId       String
+  direction       MessageDirection
+  text            String           // [enc]
+  translatedText  String?          // [enc] translation into the user's language
+  language        String?
+  aiGenerated     Boolean          @default(false)
+  autopilot       Boolean          @default(false)
+  externalId      String?          // message id on the platform (sync dedupe)
+  photoId         String?
+  sentAt          DateTime         @default(now())
+  contact         Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  photo           Photo?           @relation(fields: [photoId], references: [id], onDelete: SetNull)
+
+  @@unique([contactId, externalId])
+  @@index([contactId, sentAt])
+}
+
+model MemoryItem {
+  id        String       @id @default(cuid())
+  contactId String
+  kind      MemoryKind
+  content   String       // [enc]
+  source    MemorySource @default(AI)
+  resolved  Boolean      @default(false) // e.g. a question that has been answered
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  contact   Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId])
+}
+
+// Only recommended profiles are ever stored. Rejected profiles are never written.
+model MatchCandidate {
+  id          String      @id @default(cuid())
+  userId      String
+  platform    String
+  externalId  String
+  name        String
+  age         Int?
+  location    String?
+  summary     String      // [enc] minimal profile summary needed for openers
+  score       Int
+  reasons     Json
+  status      MatchStatus @default(SHORTLISTED)
+  contactId   String?
+  createdAt   DateTime    @default(now())
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform, externalId])
+}
+
+model Album {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  photos    Photo[]
+}
+
+model Photo {
+  id          String        @id @default(cuid())
+  userId      String
+  albumId     String?
+  storageKey  String        @unique
+  mimeType    String
+  width       Int
+  height      Int
+  sizeBytes   Int
+  caption     String        @default("")
+  tags        String[]      @default([])
+  category    PhotoCategory @default(GENERAL)
+  aiApproved  Boolean       @default(false) // only approved photos may be suggested
+  createdAt   DateTime      @default(now())
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  album       Album?        @relation(fields: [albumId], references: [id], onDelete: SetNull)
+  messages      Message[]
+  worldPortrait WorldProfile?
+
+  @@index([userId])
+}
+
+model AiUsage {
+  id           String   @id @default(cuid())
+  userId       String
+  feature      String
+  provider     String
+  model        String
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  success      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  stripeSubscriptionId String    @unique
+  status               String
+  currentPeriodEnd     DateTime?
+  updatedAt            DateTime  @updatedAt
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AutopilotSettings {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  enabled               Boolean  @default(false)
+  emergencyStop         Boolean  @default(false)
+  dailyFirstContactLimit Int     @default(5)
+  dailyReplyLimit       Int      @default(30)
+  minDelaySeconds       Int      @default(20)
+  disclosureText        String   @default("(Message sent with help from my AI assistant)")
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AutopilotEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  platform  String
+  action    String   // first_contact | reply | escalated | blocked | stop
+  contactId String?
+  detail    String   @default("")
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+enum WorldInviteKind {
+  RANDOM
+  BROWSE
+}
+
+enum WorldInviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  CANCELLED
+}
+
+enum WorldConversationStatus {
+  ACTIVE
+  ENDED
+}
+
+// Opt-in presence for the World section. Location is self-stated only.
+model WorldProfile {
+  userId          String   @id
+  optedIn         Boolean  @default(false)
+  available       Boolean  @default(false)
+  queuedAt        DateTime?
+  lastSeenAt      DateTime @default(now())
+  city            String   @default("")
+  country         String   @default("")
+  bio             String   @default("") // [enc]
+  portraitPhotoId String?  @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  portrait        Photo?   @relation(fields: [portraitPhotoId], references: [id], onDelete: SetNull)
+}
+
+model WorldBlock {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+  blocker   User     @relation("WorldBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("WorldBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+model WorldInvite {
+  id             String            @id @default(cuid())
+  kind           WorldInviteKind
+  fromId         String
+  toId           String
+  status         WorldInviteStatus @default(PENDING)
+  acceptedByFrom Boolean           @default(false)
+  acceptedByTo   Boolean           @default(false)
+  conversationId String?
+  expiresAt      DateTime
+  createdAt      DateTime          @default(now())
+  from           User              @relation("WorldInviteFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to             User              @relation("WorldInviteTo", fields: [toId], references: [id], onDelete: Cascade)
+
+  @@index([toId, status])
+  @@index([fromId, status])
+}
+
+model WorldConversation {
+  id        String                   @id @default(cuid())
+  userAId   String
+  userBId   String
+  status    WorldConversationStatus  @default(ACTIVE)
+  startedAt DateTime                 @default(now())
+  endsAt    DateTime
+  endedAt   DateTime?
+  endedById String?
+  userA     User                     @relation("WorldConvA", fields: [userAId], references: [id], onDelete: Restrict)
+  userB     User                     @relation("WorldConvB", fields: [userBId], references: [id], onDelete: Restrict)
+  messages  WorldMessage[]
+
+  @@index([userAId, status])
+  @@index([userBId, status])
+}
+
+model WorldMessage {
+  id              String            @id @default(cuid())
+  conversationId  String
+  senderId        String
+  text            String            // [enc] original
+  language        String
+  translation     String?           // [enc] into the other person's language
+  translationLang String?
+  flagged         Boolean           @default(false) // money / address / phone ask
+  createdAt       DateTime          @default(now())
+  conversation    WorldConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender          User              @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+// WebRTC signalling only (SDP / ICE). Chat text never goes here.
+model WorldSignal {
+  id             String   @id @default(cuid())
+  conversationId String
+  fromId         String
+  type           String
+  payload        String
+  createdAt      DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+model WorldReport {
+  id             String   @id @default(cuid())
+  reporterId     String
+  targetId       String
+  conversationId String?
+  reason         String
+  detail         String   @default("") // [enc]
+  createdAt      DateTime @default(now())
+  reporter       User     @relation("WorldReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+}
+
+model SupportTicket {
+  id        String   @id @default(cuid())
+  userId    String?
+  email     String
+  subject   String
+  body      String
+  status    String   @default("open")
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}

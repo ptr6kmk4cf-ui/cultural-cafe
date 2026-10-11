@@ -1,0 +1,17 @@
+node_modules/
+.next/
+.env
+.env.local
+apps/web/.env
+apps/web/storage/
+apps/extension/dist/
+apps/demo-site/data/state.json
+.data/
+*.log
+.db.log
+.DS_Store
+tsconfig.tsbuildinfo
+next-env.d.ts
+.cache
+release
+apps/web/public/downloads

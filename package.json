@@ -1,0 +1,36 @@
+{
+  "name": "cultural-cafe",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Cultural Café — meet people across cultures in your own language (web app + Chrome extension + local demo site)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "db:start": "node scripts/dev-db.mjs",
+    "db:push": "npm run db:push -w @conversa/web",
+    "db:seed": "npm run db:seed -w @conversa/web",
+    "dev:web": "npm run dev -w @conversa/web",
+    "dev:demo": "npm run start -w @conversa/demo-site",
+    "build:web": "npm run build -w @conversa/web",
+    "build:ext": "npm run build -w @conversa/extension",
+    "package:ext": "node scripts/package-extension.mjs",
+    "typecheck": "npm run typecheck -w @conversa/shared && npm run typecheck -w @conversa/web && npm run typecheck -w @conversa/extension",
+    "test:unit": "npm run test -w @conversa/web",
+    "test:api": "node scripts/api-smoke.mjs",
+    "test:e2e": "node scripts/e2e-extension.mjs",
+    "test:ui": "node --env-file=apps/web/.env scripts/ui-screenshots.mjs",
+    "test:pwa": "node --env-file=apps/web/.env scripts/pwa-check.mjs",
+    "chrome:install": "PUPPETEER_CACHE_DIR=.cache/puppeteer npx puppeteer browsers install chrome",
+    "test:lang": "node --env-file=apps/web/.env scripts/lang-check.mjs",
+    "test:world": "node --env-file=apps/web/.env scripts/world-check.mjs"
+  },
+  "devDependencies": {
+    "embedded-postgres": "^17.5.0-beta.15",
+    "puppeteer": "^24.0.0"
+  }
+}

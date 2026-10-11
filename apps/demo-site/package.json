@@ -1,0 +1,9 @@
+{
+  "name": "@conversa/demo-site",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local fictional dating website used to demonstrate and test Cultural Café. Contains no real people.",
+  "scripts": {
+    "start": "node server.mjs"
+  }
+}

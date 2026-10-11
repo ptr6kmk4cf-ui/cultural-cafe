@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="conversa-platform" content="conversa-demo" />
+  <title>Amora (demo) — Discover</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body data-page="discover">
+  <div class="demo-banner">DEMO SITE — every profile is fictional. Used to test Cultural Café locally (integration and Autopilot authorised for testing).</div>
+  <header>
+    <a class="logo" href="/">Amora</a>
+    <nav><a href="/" class="active">Discover</a><a href="/messages.html">Messages</a></nav>
+  </header>
+  <main>
+    <div class="filters">
+      <strong>Discover</strong>
+      <label>Age <input id="minAge" type="number" value="18" min="18" /> – <input id="maxAge" type="number" value="99" /></label>
+      <button class="btn secondary" id="apply">Apply</button>
+    </div>
+    <section class="grid" id="results" data-conversa-results></section>
+  </main>
+
+  <div class="modal" id="composerModal">
+    <div class="panel">
+      <h3 id="composerTitle" style="margin-top:0">Say hi</h3>
+      <div class="composer" data-conversa-composer data-profile-id="">
+        <textarea data-conversa-input placeholder="Write a message…"></textarea>
+        <div class="attach">📎 <input type="file" accept="image/png,image/jpeg,image/webp" data-conversa-photo-input /></div>
+        <div class="preview"></div>
+        <div class="row"><button class="btn" data-conversa-send>Send</button><button class="btn secondary" id="closeModal">Cancel</button></div>
+      </div>
+    </div>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
