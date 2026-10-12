@@ -57,19 +57,9 @@ export function assertWorldAutomation(userId: string, plan: Plan, kind: 'assist'
   return assertAiQuota(userId, plan);
 }
 
-export async function assertWorldQuota(userId: string, plan: Plan) {
-  const since = new Date(Date.now() - 86400_000);
-  const used = await db.worldConversation.count({
-    where: { startedAt: { gte: since }, OR: [{ userAId: userId }, { userBId: userId }] },
-  });
-  if (used >= PLAN_LIMITS[plan].worldConversationsPerDay) {
-    throw new HttpError(
-      402,
-      `Daily Café conversations reached for the ${PLAN_LIMITS[plan].label} plan (${PLAN_LIMITS[plan].worldConversationsPerDay}/24h).`,
-      'world_quota',
-    );
-  }
-  return { used, limit: PLAN_LIMITS[plan].worldConversationsPerDay };
+/** A table is not counted against a daily cap. Anyone can sit down again. */
+export async function assertWorldQuota(_userId: string, _plan: Plan) {
+  return { used: 0, limit: null };
 }
 
 export async function assertAiQuota(userId: string, plan: Plan) {

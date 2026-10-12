@@ -182,7 +182,6 @@ export default function WorldPage() {
   if (!state) return error ? <Alert kind="error">{error}</Alert> : <Spinner />;
   const showFriendHint = fromFriend && !form.optedIn && !invites.some((i) => i.kind === 'FRIEND');
   const profileReady = !!form.city.trim() && form.optedIn;
-  const tablesFull = state.quota.used >= state.quota.limit;
   const guests = (people ?? []).filter((p) => p.guest);
   const others = (people ?? []).filter((p) => !p.guest);
 
@@ -213,7 +212,7 @@ export default function WorldPage() {
         <Alert kind="info">A friend invited you. Save your profile first. You will both still accept before the table starts.</Alert>
       )}
       <p className="text-xs text-ink-400">
-        {state.quota.used} / {state.quota.limit} tables today · the table is timed · location is what you type
+        The table is timed · location is what you type
       </p>
 
 
@@ -266,11 +265,6 @@ export default function WorldPage() {
             <Link href="/app/world/map" className="text-brand-300 hover:underline">Or pick a country on the map.</Link>
           </p>
         </div>
-        {tablesFull && (
-          <Alert kind="warning">
-            Today's {state.quota.limit} tables are already used. A name opens again when one of those tables is a day old.
-          </Alert>
-        )}
         {error && <Alert kind="error">{error}</Alert>}
         {!profileReady && <Alert kind="info">Add your city and tap Save profile. The names show up here after that.</Alert>}
         {profileReady && !people && <Spinner />}
@@ -286,7 +280,7 @@ export default function WorldPage() {
                   key={p.id}
                   type="button"
                   className="card space-y-2 text-left transition hover:border-brand-500/40"
-                  disabled={!!busy || tablesFull}
+                  disabled={!!busy}
                   onClick={() => invite(p)}
                 >
                   <span className="flex items-center gap-3">
@@ -303,7 +297,7 @@ export default function WorldPage() {
                     </span>
                   </span>
                   {p.bio && <span className="block text-sm text-ink-200">{p.bio}</span>}
-                  <span className="btn-primary w-full">{tablesFull ? "Today's tables are used" : busy === p.id ? 'Opening the table…' : `Sit with ${p.name}`}</span>
+                  <span className="btn-primary w-full">{busy === p.id ? 'Opening the table…' : `Sit with ${p.name}`}</span>
                 </button>
               ))}
             </div>
@@ -318,13 +312,13 @@ export default function WorldPage() {
                   key={p.id}
                   type="button"
                   className="card space-y-2 text-left transition hover:border-brand-500/40"
-                  disabled={!!busy || tablesFull}
+                  disabled={!!busy}
                   onClick={() => invite(p)}
                 >
                   <span className="block text-lg font-semibold text-white underline decoration-white/30 underline-offset-4">{p.name}</span>
                   <span className="block text-xs text-ink-400">{[p.city, p.country].filter(Boolean).join(', ') || 'Somewhere'} · {p.languageLabel}</span>
                   {p.bio && <span className="block text-sm text-ink-200">{p.bio}</span>}
-                  <span className="btn-secondary w-full">{tablesFull ? "Today's tables are used" : busy === p.id ? 'Asking…' : `Ask ${p.name}`}</span>
+                  <span className="btn-secondary w-full">{busy === p.id ? 'Asking…' : `Ask ${p.name}`}</span>
                 </button>
               ))}
             </div>

@@ -5,8 +5,8 @@ import { Alert, Badge, PageHeader, Spinner } from '@/components/ui';
 import { api } from '@/lib/client';
 
 const PLANS = [
-  { id: 'FREE', name: 'Free', price: '€0', features: ['2 tables a day', 'Live translation', 'Draft a reply, or let Cultural Café answer at the table'] },
-  { id: 'PREMIUM', name: 'Premium', price: '€14.99 / month', features: ['20 tables a day', 'Live translation', 'Draft a reply, or let Cultural Café answer at the table', 'Video later'] },
+  { id: 'FREE', name: 'Free', price: '€0', features: ['Sit down whenever you want', 'Live translation', 'Draft a reply, or let Cultural Café answer at the table'] },
+  { id: 'PREMIUM', name: 'Premium', price: '€14.99 / month', features: ['Sit down whenever you want', 'Live translation', 'Draft a reply, or let Cultural Café answer at the table', 'Video later'] },
 ];
 
 export default function Subscription() {
