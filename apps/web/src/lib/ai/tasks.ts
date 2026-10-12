@@ -458,6 +458,60 @@ const WorldReplySchema = z.object({
 export const WORLD_AI_DISCLOSURE =
   "I'm using Cultural Café to help me write at this table — still a real person, just with help.";
 
+const GuestLineSchema = z.object({
+  text: z.preprocess((v) => (typeof v === 'string' ? v.trim().slice(0, 400) : ''), z.string()),
+});
+
+/** One spoken line from a café guest, written directly in the reader's language. */
+export async function writeCafeGuestLine(opts: {
+  user: AuthUser;
+  name: string;
+  city: string;
+  country: string;
+  bio: string;
+  interests: string[];
+  humanLang: string;
+  topic: string;
+  history: { mine: boolean; text: string }[];
+}) {
+  const latest = [...opts.history].reverse().find((turn) => turn.mine)?.text ?? '';
+  const said = opts.history.filter((turn) => !turn.mine).map((turn) => turn.text).slice(-6);
+  const system = `You are ${opts.name}, texting from ${opts.city}, ${opts.country}. This is a café table about ordinary life. You are one person, not a guide, a teacher, or a translator.
+
+HOW YOU TEXT
+- Write only in ${langLine(opts.humanLang)}. Any other language is thrown away.
+- Sound like a text: contractions, a spoken rhythm, one or two sentences, one question at most.
+- Answer what they just asked in the first sentence. Then one small detail from your own street, only if it belongs there.
+- Life you can draw from: ${opts.bio} You care about ${opts.interests.join(', ') || 'ordinary days'}.
+- Table topic: ${opts.topic || 'everyday life where each of you lives'}.
+- Do not repeat a line you already sent.
+- Never write "I am glad to hear that", "You mentioned", "Thank you for telling me", "You said", or "Hello from ${opts.city}".
+- Do not invent a job, a family, money, a phone number, or a plan to meet.
+- Output JSON only: {"text":"…"}`;
+  const thread = opts.history
+    .slice(-8)
+    .map((turn) => `${turn.mine ? 'THEM' : 'ME'}: ${untrusted('line', turn.text, 400)}`)
+    .join('\n');
+  const { data } = await runAi(
+    opts.user,
+    {
+      task: 'cafe_guest',
+      system,
+      messages: [{
+        role: 'user',
+        content: latest
+          ? `Their last text:\n${untrusted('latest', latest, 500)}\n\nAlready sent by you:\n${said.map((line) => untrusted('said', line, 300)).join('\n') || '(nothing yet)'}\n\nThread:\n${thread}`
+          : 'Nobody has written yet. Greet them with one ordinary detail from your street and one easy question.',
+      }],
+      json: true,
+      temperature: 0.9,
+      maxTokens: 220,
+    },
+    GuestLineSchema,
+  );
+  return data.text.trim();
+}
+
 export async function generateWorldReply(opts: {
   user: AuthUser;
   persona: Persona;
@@ -481,10 +535,12 @@ ${SAFETY_RULES}
 
 WORLD RULES
 - Write ONLY in ${langLine(opts.myLanguage)}. The live page will translate it for the other person.
-- Be a curious, warm guest.
+- This is a text message from a person at the table, not a paragraph, a speech, or a guidebook.
+- Use contractions. One or two sentences. Start with the answer or the reaction, not with thanks.
 - TABLE TOPIC: ${opts.prompt || 'everyday life where they live'}
-- Read their last real line and answer that line. Name one concrete detail from it (a place, a food, a sound, a time of day, or an activity they used). Also stay with the table topic when they were talking about it, or when they have not answered it yet.
+- Answer their last real line. Keep one concrete thing they named (a place, a food, a sound, a time of day). Stay with the table topic when that is what they asked, or when they have not answered it yet.
 - Do not thank them and then change the subject. Do not ask what a normal day is like unless a normal day is what they said or what the topic asks.
+- Never write "I am glad to hear that", "You mentioned", "Thank you for telling me", or "You said".
 - A line that only says to stop, take care, or goodbye is the end of one story. It is not a request that you leave. Answer the table topic instead.
 - The user says they are in ${opts.myCity || 'their own city'}. You may mention that city. Do not invent a private life story, a job, or a family.
 - ${opts.auto ? 'Automatic answering is on. Write the next short, warm line and set hold=false. Set hold=true only if they ask for money, a phone number, to meet in person, or to stop.' : 'This is a suggested reply. Always write a sendable line. hold=false unless they ask for money, a phone number, or to stop.'}
@@ -508,7 +564,7 @@ Peer first name: ${opts.peerName || 'them'}. They said they are in: ${opts.peerC
       system,
       messages: [{ role: 'user', content: `Latest from them:\n${untrusted('latest_message', latest, 2000)}\n\nThread:\n${historyBlock || '(just started)'}` }],
       json: true,
-      temperature: opts.auto ? 0.5 : 0.7,
+      temperature: opts.auto ? 0.8 : 0.9,
       maxTokens: 400,
     },
     WorldReplySchema,

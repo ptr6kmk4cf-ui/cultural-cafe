@@ -1,3 +1,5 @@
+import { translationFitsLanguage } from './ai/lang';
+
 /** A guest goodbye is not something to thank them for. A real stop request still is. */
 export function isClosingLine(text: string) {
   return /\b(let'?s stop|stop (here|there)|we (can |should )?stop|take care|goodbye|good bye|on s['’]arr[eê]te|prends soin)\b/i.test(text);
@@ -20,6 +22,20 @@ export function contentWords(text: string): string[] {
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .split(/\s+/)
     .filter((word) => word.length > 3 && !COMMON.has(word));
+}
+
+const STIFF = /\b(i am glad to hear|glad to hear that|you mentioned|thank you for telling|you said|as an ai|language model)\b/i;
+
+/** A guest line can be shown when it is in the reader's language, answers the thread, and does not sound like a form. */
+export function guestLineUsable(text: string, humanLang: string, already: string[], sources: string[]): boolean {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (clean.length < 20 || clean.length > 360) return false;
+  if (STIFF.test(clean)) return false;
+  if ((clean.match(/\?/g) ?? []).length > 1) return false;
+  if (!translationFitsLanguage(clean, humanLang)) return false;
+  const norm = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
+  if (already.some((previous) => norm(previous) === norm(clean))) return false;
+  return replyReads(clean, sources);
 }
 
 /** True when the reply uses a concrete word from what they said or from the table topic. */

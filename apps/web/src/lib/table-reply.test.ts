@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isClosingLine, lineWorthReading, replyAboutTheirLine, replyReads } from './table-reply';
+import { guestLineUsable, isClosingLine, lineWorthReading, replyAboutTheirLine, replyReads } from './table-reply';
 
 test('a stock thank-you does not count as reading the table', () => {
   const stock = 'Thank you for telling me that. What is a normal day like in Lyon, France?';
@@ -24,6 +24,18 @@ test('a guest goodbye is skipped so the draft answers the topic', () => {
   });
   assert.equal(draft.includes('normal day'), false);
   assert.match(draft, /Surfing/);
+});
+
+test('a stiff or wrong-language guest line is not shown', () => {
+  const already = ['On the corniche, neighbours say a word first and then a small wave.'];
+  const sources = ['do neighbours greet each other with a word or just a wave?'];
+  assert.equal(guestLineUsable('I am glad to hear that. Here we walk the corniche slowly.', 'en', [], sources), false);
+  assert.equal(guestLineUsable('你好。在里斯本，电车在上坡时会发出吱吱声。', 'en', [], sources), false);
+  assert.equal(guestLineUsable(already[0], 'en', already, sources), false);
+  assert.equal(
+    guestLineUsable('We say a word first, then a small wave. The sea is loud enough that nobody needs a big hello.', 'en', already, sources),
+    true,
+  );
 });
 
 test('a real answer names what they just said', () => {

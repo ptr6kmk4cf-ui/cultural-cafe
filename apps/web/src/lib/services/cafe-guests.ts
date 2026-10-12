@@ -4,7 +4,8 @@ import { detectSensitiveRequest, detectStopRequest, sanitizeUntrusted } from '..
 import { encrypt } from '../crypto';
 import { db } from '../db';
 import { HttpError, notFound } from '../http';
-import { contentWords } from '../table-reply';
+import { writeCafeGuestLine } from '../ai/tasks';
+import { contentWords, guestLineUsable } from '../table-reply';
 import { tablePromptFor } from './cafe-topics';
 
 /** How many café seats stay open for guests. One real opted-in person closes one seat. */
@@ -491,6 +492,49 @@ export function scriptedGuestTurn(email: string, history: GuestTurn[], humanLang
   };
 }
 
+/** A spoken line when the model can write one. The written catalog is the backup. */
+async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[], humanLang: string, topic: string) {
+  const scripted = scriptedGuestTurn(guest.email, turns, humanLang, topic);
+  const latest = [...turns].reverse().find((turn) => turn.mine)?.text ?? '';
+  const stop = !!latest && (detectStopRequest(latest) || detectSensitiveRequest(latest));
+  if (!scripted || stop) return scripted;
+  const visible = turns.map((turn) => ({
+    mine: turn.mine,
+    text: turn.mine ? turn.text : (turn.translation || turn.text),
+  }));
+  const already = visible.filter((turn) => !turn.mine).map((turn) => turn.text);
+  try {
+    const account = await db.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, name: true, role: true, plan: true },
+    });
+    if (!account) return scripted;
+    const draft = await writeCafeGuestLine({
+      user: account,
+      name: guest.name,
+      city: guest.city,
+      country: guest.country,
+      bio: guest.bio,
+      interests: guest.interests,
+      humanLang,
+      topic,
+      history: visible,
+    });
+    const sources = latest ? [latest, topic] : [];
+    if (!guestLineUsable(draft, humanLang, already, sources)) return scripted;
+    return {
+      text: draft,
+      language: humanLang,
+      translation: draft,
+      translationLang: humanLang,
+      closed: false,
+    };
+  } catch (err) {
+    console.error('[cafe-guest]', err instanceof Error ? err.message : err);
+    return scripted;
+  }
+}
+
 /** A labeled guest answers in the hour. The line is returned and not stored. */
 export async function replyAsCafeGuest(userId: string, conversationId: string, history: GuestTurn[]) {
   const c = await db.worldConversation.findUnique({ where: { id: conversationId } });
@@ -516,7 +560,7 @@ export async function replyAsCafeGuest(userId: string, conversationId: string, h
     text: sanitizeUntrusted(turn.text, 500),
     translation: sanitizeUntrusted(turn.translation, 500),
   })).filter((turn) => turn.text);
-  const line = scriptedGuestTurn(guest.email, turns, humanLang, topic);
+  const line = await spokenGuestLine(userId, guest, turns, humanLang, topic);
   if (!line) throw notFound();
   await db.worldPeerLink.upsert({
     where: { conversationId_userId: { conversationId, userId: otherId } },
