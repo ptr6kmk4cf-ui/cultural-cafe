@@ -48,6 +48,11 @@ export default function MapPage() {
   const cityHits = query.trim() ? searchCities(query, atlasCountryNames, people ?? []) : [];
 
   useEffect(() => {
+    if (!error) return;
+    (peopleRef.current ?? document.getElementById('map-error'))?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [error]);
+
+  useEffect(() => {
     const panel = peopleRef.current;
     if (!cityKey || !panel) return;
     const rect = panel.getBoundingClientRect();
@@ -89,7 +94,7 @@ export default function MapPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Map" subtitle="Tap a country, then a city. The people from that city are listed there, and you sit down with one of them." />
-      {error && !city && <Alert kind="error">{error}</Alert>}
+      {error && !city && <div id="map-error"><Alert kind="error">{error}</Alert></div>}
       <CafeMap selected={country} counts={counts} onSelect={pickCountry} />
 
       {country && (
@@ -140,20 +145,20 @@ export default function MapPage() {
                                 disabled={!!busy}
                                 onClick={() => sit(person)}
                               >
-                                <div className="flex items-center gap-3">
-                                  <div className="grid h-14 w-14 place-items-center overflow-hidden rounded-2xl bg-white/10 text-lg font-bold text-white">
+                                <span className="flex items-center gap-3">
+                                  <span className="grid h-14 w-14 place-items-center overflow-hidden rounded-2xl bg-white/10 text-lg font-bold text-white">
                                     {person.portraitUrl ? (
                                       // eslint-disable-next-line @next/next/no-img-element
                                       <img src={person.portraitUrl} alt="" className="h-full w-full object-cover" />
                                     ) : person.name.slice(0, 1)}
-                                  </div>
-                                  <div>
-                                    <p className="text-lg font-semibold text-white underline decoration-white/30 underline-offset-4">{person.name}</p>
-                                    <p className="text-xs text-ink-400">{city.label}, {country} · {person.languageLabel}</p>
+                                  </span>
+                                  <span>
+                                    <span className="block text-lg font-semibold text-white underline decoration-white/30 underline-offset-4">{person.name}</span>
+                                    <span className="block text-xs text-ink-400">{city.label}, {country} · {person.languageLabel}</span>
                                     {person.guest && <span className="mt-1 inline-flex"><Badge>Guest</Badge></span>}
-                                  </div>
-                                </div>
-                                {person.bio && <p className="text-sm text-ink-200">{person.bio}</p>}
+                                  </span>
+                                </span>
+                                {person.bio && <span className="block text-sm text-ink-200">{person.bio}</span>}
                                 <span className={person.guest ? 'btn-primary w-full' : 'btn-secondary w-full'}>
                                   {busy === person.id ? (person.guest ? 'Opening the table…' : 'Asking…') : person.guest ? `Sit with ${person.name}` : `Ask ${person.name}`}
                                 </span>

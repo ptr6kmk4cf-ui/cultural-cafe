@@ -170,9 +170,11 @@ export default function WorldPage() {
         return;
       }
       setError(`${person.name} still has to accept. The table has not started. Tap a guest to sit down now.`);
+      document.getElementById('meet')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       await load();
     } catch (e) {
       setError((e as Error).message);
+      document.getElementById('meet')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     setBusy('');
   }
@@ -180,6 +182,7 @@ export default function WorldPage() {
   if (!state) return error ? <Alert kind="error">{error}</Alert> : <Spinner />;
   const showFriendHint = fromFriend && !form.optedIn && !invites.some((i) => i.kind === 'FRIEND');
   const profileReady = !!form.city.trim() && form.optedIn;
+  const tablesFull = state.quota.used >= state.quota.limit;
   const guests = (people ?? []).filter((p) => p.guest);
   const others = (people ?? []).filter((p) => !p.guest);
 
@@ -263,6 +266,12 @@ export default function WorldPage() {
             <Link href="/app/world/map" className="text-brand-300 hover:underline">Or pick a country on the map.</Link>
           </p>
         </div>
+        {tablesFull && (
+          <Alert kind="warning">
+            Today's {state.quota.limit} tables are already used. A name opens again when one of those tables is a day old.
+          </Alert>
+        )}
+        {error && <Alert kind="error">{error}</Alert>}
         {!profileReady && <Alert kind="info">Add your city and tap Save profile. The names show up here after that.</Alert>}
         {profileReady && !people && <Spinner />}
         {profileReady && people && guests.length === 0 && others.length === 0 && (
@@ -277,24 +286,24 @@ export default function WorldPage() {
                   key={p.id}
                   type="button"
                   className="card space-y-2 text-left transition hover:border-brand-500/40"
-                  disabled={!!busy}
+                  disabled={!!busy || tablesFull}
                   onClick={() => invite(p)}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="grid h-14 w-14 place-items-center overflow-hidden rounded-2xl bg-white/10 text-lg font-bold text-white">
+                  <span className="flex items-center gap-3">
+                    <span className="grid h-14 w-14 place-items-center overflow-hidden rounded-2xl bg-white/10 text-lg font-bold text-white">
                       {p.portraitUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={p.portraitUrl} alt="" className="h-full w-full object-cover" />
                       ) : p.name.slice(0, 1)}
-                    </div>
-                    <div>
-                      <p className="text-lg font-semibold text-white underline decoration-white/30 underline-offset-4">{p.name}</p>
-                      <p className="text-xs text-ink-400">{[p.city, p.country].filter(Boolean).join(', ')} · {p.languageLabel}</p>
+                    </span>
+                    <span>
+                      <span className="block text-lg font-semibold text-white underline decoration-white/30 underline-offset-4">{p.name}</span>
+                      <span className="block text-xs text-ink-400">{[p.city, p.country].filter(Boolean).join(', ')} · {p.languageLabel}</span>
                       <span className="mt-1 inline-flex"><Badge>Guest</Badge></span>
-                    </div>
-                  </div>
-                  {p.bio && <p className="text-sm text-ink-200">{p.bio}</p>}
-                  <span className="btn-primary w-full">{busy === p.id ? 'Opening the table…' : `Sit with ${p.name}`}</span>
+                    </span>
+                  </span>
+                  {p.bio && <span className="block text-sm text-ink-200">{p.bio}</span>}
+                  <span className="btn-primary w-full">{tablesFull ? "Today's tables are used" : busy === p.id ? 'Opening the table…' : `Sit with ${p.name}`}</span>
                 </button>
               ))}
             </div>
@@ -309,13 +318,13 @@ export default function WorldPage() {
                   key={p.id}
                   type="button"
                   className="card space-y-2 text-left transition hover:border-brand-500/40"
-                  disabled={!!busy}
+                  disabled={!!busy || tablesFull}
                   onClick={() => invite(p)}
                 >
-                  <p className="text-lg font-semibold text-white underline decoration-white/30 underline-offset-4">{p.name}</p>
-                  <p className="text-xs text-ink-400">{[p.city, p.country].filter(Boolean).join(', ') || 'Somewhere'} · {p.languageLabel}</p>
-                  {p.bio && <p className="text-sm text-ink-200">{p.bio}</p>}
-                  <span className="btn-secondary w-full">{busy === p.id ? 'Asking…' : `Ask ${p.name}`}</span>
+                  <span className="block text-lg font-semibold text-white underline decoration-white/30 underline-offset-4">{p.name}</span>
+                  <span className="block text-xs text-ink-400">{[p.city, p.country].filter(Boolean).join(', ') || 'Somewhere'} · {p.languageLabel}</span>
+                  {p.bio && <span className="block text-sm text-ink-200">{p.bio}</span>}
+                  <span className="btn-secondary w-full">{tablesFull ? "Today's tables are used" : busy === p.id ? 'Asking…' : `Ask ${p.name}`}</span>
                 </button>
               ))}
             </div>
