@@ -39,7 +39,7 @@ export function aiConfig() {
     return {
       provider: 'openai-compatible',
       apiKey: neonToken,
-      model: process.env.AI_MODEL || 'claude-haiku-4-5',
+      model: process.env.AI_MODEL || 'claude-sonnet-5',
       visionModel: process.env.AI_VISION_MODEL || '',
       baseUrl: `${neonHost}/v1`,
       isMock: false,

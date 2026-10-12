@@ -6,6 +6,7 @@ import { isRtl } from '@conversa/shared';
 import { Alert, Badge, Spinner, useToast } from '@/components/ui';
 import { ApiError, api } from '@/lib/client';
 import { deviceKeepsLines, forgetDeviceLines, loadDeviceLines, saveDeviceLines, setDeviceKeepsLines } from '@/lib/cafe-device';
+import { isClosingLine, lineWorthReading, replyAboutTheirLine } from '@/lib/table-reply';
 import { useWorldPeer } from '@/lib/world-peer';
 
 type Msg = { id: string; seq?: number; mine: boolean; text: string; language: string; translation: string | null; translationLang: string | null; flagged: boolean; createdAt: string };
@@ -250,14 +251,11 @@ export default function WorldChat() {
   }
 
   function localDraft() {
-    const place = [conv?.peer?.city, conv?.peer?.country].filter(Boolean).join(', ');
-    const theirs = [...msgsRef.current].reverse().find((m) => !m.mine);
-    if (theirs) {
-      return place
-        ? `Thank you for telling me that. What is a normal day like in ${place}?`
-        : 'Thank you for telling me that. What is a normal day like where you live?';
-    }
-    return 'Where I live, the sound of home is the street in the morning. What sound reminds you of home?';
+    const theirs = msgsRef.current.filter((m) => !m.mine).map((m) => visibleLine(m.translation || m.text));
+    return replyAboutTheirLine({
+      latest: lineWorthReading(theirs),
+      topic: conv?.prompt?.question ?? '',
+    });
   }
 
   function showDraft(draft: string) {
@@ -370,6 +368,7 @@ export default function WorldChat() {
     const lastGuest = guests.at(-1);
     if (!lastGuest) return;
     const body = visibleLine(lastGuest.translation || lastGuest.text);
+    if (isClosingLine(body)) return;
     const repeated = !!body && guests.slice(0, -1).some((m) => visibleLine(m.translation || m.text) === body);
     if (!repeated) return;
     lastHandled.current = lastGuest.id;

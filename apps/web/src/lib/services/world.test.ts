@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cafePromptFor, cafePromptFromPool } from '@conversa/shared';
 import { icePayload, parseSignalBody, signalPhase } from '../world-signal';
-import { cafeGuestEmails, guestFollowUp, guestSlots, hardcodedTableReply, nextHardcodedTableLine } from './cafe-guests';
+import { cafeGuestEmails, guestFollowUp, guestSlots, hardcodedTableReply, nextHardcodedTableLine, scriptedGuestTurn } from './cafe-guests';
 import { INVITE_CODE_LENGTH, firstName, friendInviteMessage, friendJoinPath, isInviteCode, newInviteCode, normalizeInviteCode } from './world';
 
 test('World cards show a first name only', () => {
@@ -63,6 +63,41 @@ test('A café guest answers the last line and then changes topic', () => {
     latest = 'Another ordinary day.';
   }
   assert.equal(guestFollowUp(email, said, latest), null);
+});
+
+test('Hassan answers the neighbour question instead of repeating himself', () => {
+  const stock = 'I am glad to hear that. Here we walk the corniche slowly. What reminds you of home?';
+  const user = 'The sound of waves along the Promenade in Nice is what reminds me of home too, Hassan. On your slow corniche walks, do neighbours greet each other with a word or just a wave?';
+  const answer = scriptedGuestTurn('guest.hassan@culturalcafe.invalid', [
+    { mine: false, text: 'يسعدني هذا. هنا نمشي على الكورنيش ببطء. ما الذي يذكرك ببيتك؟', translation: stock },
+    { mine: true, text: user },
+  ], 'en', 'How do neighbours greet each other where you live?');
+  assert.match(answer?.translation ?? '', /word first/i);
+  assert.match(answer?.translation ?? '', /small wave/i);
+  assert.equal(answer?.translation?.includes(stock), false);
+  assert.equal(/[\u4E00-\u9FFF]/.test(answer?.translation ?? ''), false);
+  const again = scriptedGuestTurn('guest.hassan@culturalcafe.invalid', [
+    { mine: false, text: 'x', translation: stock },
+    { mine: true, text: user },
+    { mine: false, text: answer?.text ?? '', translation: answer?.translation },
+    { mine: true, text: 'And on a Sunday?' },
+  ], 'en');
+  assert.match(again?.translation ?? '', /Sunday/i);
+  assert.notEqual(again?.translation, answer?.translation);
+  assert.equal(again?.translation?.includes(stock), false);
+});
+
+test('A guest hello is the written English line, not a translation', () => {
+  const hello = scriptedGuestTurn('guest.lena@culturalcafe.invalid', [], 'en');
+  assert.match(hello?.translation ?? '', /tram/i);
+  assert.equal(/[\u4E00-\u9FFF]/.test(hello?.translation ?? ''), false);
+  assert.equal(/[\u4E00-\u9FFF]/.test(hello?.text ?? ''), false);
+  const answer = scriptedGuestTurn('guest.lena@culturalcafe.invalid', [
+    { mine: false, text: hello?.text ?? '' },
+    { mine: true, text: 'The tram in my city is quiet.' },
+  ], 'en');
+  assert.match(answer?.translation ?? '', /Tram 28/);
+  assert.equal(answer?.closed, false);
 });
 
 test('Automatic answering at a guest table uses each hardcoded line once', () => {

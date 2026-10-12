@@ -6,6 +6,7 @@ import type { AuthUser } from '../auth';
 import { PRODUCTION_ORIGIN, ageFromBirthDate } from '../auth';
 import { decrypt } from '../crypto';
 import { db } from '../db';
+import { discardFinishedWork, dropFinishedInvite } from '../finished-work';
 import { HttpError, notFound } from '../http';
 import { PLAN_LIMITS, assertWorldQuota } from '../plans';
 import { detectLanguageHeuristic, normalizeLang } from '../ai/lang';
@@ -147,12 +148,18 @@ async function wipeHourRecords(ids: string[]) {
   ]);
 }
 
+/** Lines, connection setup, and the invite belong to the table. They go when the table is finished. */
+async function discardTableWork(ids: string[]) {
+  if (!ids.length) return;
+  await wipeHourRecords(ids);
+  await db.worldInvite.deleteMany({ where: { conversationId: { in: ids } } });
+}
+
 export async function expireStale(force = false) {
   const t = Date.now();
   if (!force && t - lastExpireAt < EXPIRE_EVERY_MS) return;
   lastExpireAt = t;
   const now = new Date(t);
-  await db.worldInvite.updateMany({ where: { status: 'PENDING', expiresAt: { lt: now } }, data: { status: 'EXPIRED' } });
   const due = await db.worldConversation.findMany({
     where: { status: 'ACTIVE', endsAt: { lt: now } },
     select: { id: true },
@@ -160,8 +167,9 @@ export async function expireStale(force = false) {
   if (due.length) {
     const ids = due.map((c) => c.id);
     await db.worldConversation.updateMany({ where: { id: { in: ids } }, data: { status: 'ENDED', endedAt: now } });
-    await wipeHourRecords(ids);
+    await discardTableWork(ids);
   }
+  await discardFinishedWork(force);
   await db.worldProfile.updateMany({
     where: { available: true, lastSeenAt: { lt: new Date(t - WORLD_QUEUE_FRESH_MS) } },
     data: { available: false, queuedAt: null },
@@ -291,13 +299,13 @@ export async function adminEndConversation(conversationId: string) {
   if (c.status === 'ACTIVE') {
     await db.worldConversation.update({ where: { id: c.id }, data: { status: 'ENDED', endedAt: new Date() } });
   }
-  await wipeHourRecords([c.id]);
+  await discardTableWork([c.id]);
 }
 
 export async function adminClearConnection(conversationId: string) {
   const c = await db.worldConversation.findUnique({ where: { id: conversationId } });
   if (!c) throw notFound();
-  await wipeHourRecords([c.id]);
+  await discardTableWork([c.id]);
 }
 
 export async function activeConversation(userId: string) {
@@ -647,7 +655,7 @@ export async function joinQueue(user: AuthUser) {
       const opened = await openAcceptedHour(invite, user);
       return { state: 'chatting' as const, conversation: opened.conversation, invites: [] as Awaited<ReturnType<typeof serializeInvite>>[] };
     } catch (err) {
-      await db.worldInvite.update({ where: { id: invite.id }, data: { status: 'CANCELLED' } });
+      await dropFinishedInvite(invite.id);
       throw err;
     }
   }
@@ -670,9 +678,8 @@ export async function joinQueue(user: AuthUser) {
 
 export async function leaveQueue(userId: string) {
   await db.worldProfile.updateMany({ where: { userId }, data: { available: false, queuedAt: null, lastSeenAt: new Date() } });
-  await db.worldInvite.updateMany({
+  await db.worldInvite.deleteMany({
     where: { kind: 'RANDOM', status: 'PENDING', OR: [{ fromId: userId }, { toId: userId }] },
-    data: { status: 'CANCELLED' },
   });
 }
 
@@ -682,18 +689,29 @@ export async function inviteFromBrowse(user: AuthUser, toId: string) {
   const theirs = await db.worldProfile.findUnique({ where: { userId: toId } });
   if (!theirs?.optedIn) throw notFound();
   if (await isBlocked(user.id, toId)) throw new HttpError(403, 'You cannot contact this person.', 'blocked');
-  if ((await metPartnerIds(user.id)).has(toId)) {
+  const target = await db.user.findUnique({ where: { id: toId }, select: { synthetic: true } });
+  const guestSeat = !!target?.synthetic;
+  if (!guestSeat && (await metPartnerIds(user.id)).has(toId)) {
     throw new HttpError(409, 'You already sat with this person. They are listed in Past contacts.', 'already_met');
   }
   const active = await activeConversation(user.id);
-  if (active) throw new HttpError(409, 'Finish your current World conversation first.', 'busy');
-  if (await activeConversation(toId)) throw new HttpError(409, 'They are already in a conversation.', 'they_busy');
+  if (active && (active.userAId === toId || active.userBId === toId)) {
+    return { invite: null, conversation: await serializeConversation(active, user.id) };
+  }
+  if (active) {
+    try {
+      await endConversation(user.id, active.id);
+    } catch (err) {
+      if (await activeConversation(user.id)) throw err;
+    }
+  }
+  if (!guestSeat && (await activeConversation(toId))) throw new HttpError(409, 'They are already in a conversation.', 'they_busy');
   const existing = await db.worldInvite.findFirst({
     where: { status: 'PENDING', OR: [{ fromId: user.id, toId }, { fromId: toId, toId: user.id }] },
   });
-  if (existing) return { invite: await serializeInvite(existing, user.id), conversation: null };
+  if (existing && !guestSeat) return { invite: await serializeInvite(existing, user.id), conversation: null };
+  if (existing) await dropFinishedInvite(existing.id);
   await assertWorldQuota(user.id, user.plan);
-  const target = await db.user.findUnique({ where: { id: toId }, select: { synthetic: true } });
   const invite = await db.worldInvite.create({
     data: {
       kind: 'BROWSE',
@@ -710,7 +728,7 @@ export async function inviteFromBrowse(user: AuthUser, toId: string) {
     const fresh = await db.worldInvite.findUniqueOrThrow({ where: { id: invite.id } });
     return { invite: await serializeInvite(fresh, user.id), conversation: opened.conversation };
   } catch (err) {
-    await db.worldInvite.update({ where: { id: invite.id }, data: { status: 'CANCELLED' } });
+    await dropFinishedInvite(invite.id);
     throw err;
   }
 }
@@ -718,7 +736,8 @@ export async function inviteFromBrowse(user: AuthUser, toId: string) {
 async function openAcceptedHour(inv: WorldInvite, user: AuthUser) {
   await assertWorldQuota(user.id, user.plan);
   const otherId = inv.fromId === user.id ? inv.toId : inv.fromId;
-  if (await activeConversation(user.id) || await activeConversation(otherId)) {
+  const other = await db.user.findUnique({ where: { id: otherId }, select: { synthetic: true } });
+  if (await activeConversation(user.id) || (!other?.synthetic && await activeConversation(otherId))) {
     throw new HttpError(409, 'One of you is already in a conversation.', 'busy');
   }
   const [a, b] = [inv.fromId, inv.toId].sort();
@@ -743,11 +762,11 @@ export async function respondInvite(user: AuthUser, inviteId: string, accept: bo
   if (!inv || (inv.fromId !== user.id && inv.toId !== user.id)) throw notFound();
   if (inv.status !== 'PENDING') throw new HttpError(409, 'This invitation is no longer pending.', 'stale');
   if (inv.expiresAt < new Date()) {
-    await db.worldInvite.update({ where: { id: inv.id }, data: { status: 'EXPIRED' } });
+    await dropFinishedInvite(inv.id);
     throw new HttpError(410, 'This invitation expired.', 'expired');
   }
   if (!accept) {
-    await db.worldInvite.update({ where: { id: inv.id }, data: { status: 'DECLINED' } });
+    await dropFinishedInvite(inv.id);
     return { status: 'DECLINED' as const, conversation: null };
   }
   const iAmFrom = inv.fromId === user.id;
@@ -762,16 +781,45 @@ export async function respondInvite(user: AuthUser, inviteId: string, accept: bo
   return openAcceptedHour(inv, user);
 }
 
+/** Discards every stored table and invite with one person, including a table that is still open. */
+export async function forgetPastContact(userId: string, peerId: string) {
+  if (peerId === userId) throw new HttpError(400, 'You cannot remove yourself.');
+  const peer = await db.user.findUnique({ where: { id: peerId }, select: { id: true } });
+  if (!peer) throw notFound();
+  const pair = {
+    OR: [
+      { userAId: userId, userBId: peerId },
+      { userAId: peerId, userBId: userId },
+    ],
+  };
+  const rows = await db.worldConversation.findMany({ where: pair, select: { id: true, status: true } });
+  if (!rows.length) throw new HttpError(404, 'That person is not in your past contacts.', 'not_found');
+  const now = new Date();
+  const open = rows.filter((row) => row.status === 'ACTIVE').map((row) => row.id);
+  if (open.length) {
+    await db.worldConversation.updateMany({
+      where: { id: { in: open } },
+      data: { status: 'ENDED', endedAt: now, endedById: userId },
+    });
+  }
+  const ids = rows.map((row) => row.id);
+  await discardTableWork(ids);
+  await db.worldInvite.deleteMany({
+    where: { OR: [{ fromId: userId, toId: peerId }, { fromId: peerId, toId: userId }] },
+  });
+  await db.worldConversation.deleteMany({ where: { id: { in: ids } } });
+  return { ok: true as const, removed: ids.length };
+}
+
 export async function endConversation(userId: string, conversationId: string) {
   const c = await requireParticipant(userId, conversationId);
   if (c.status !== 'ACTIVE') return c;
-  return db.worldConversation.update({
+  const ended = await db.worldConversation.update({
     where: { id: c.id },
     data: { status: 'ENDED', endedAt: new Date(), endedById: userId },
-  }).then(async (ended) => {
-    await wipeHourRecords([c.id]);
-    return ended;
   });
+  await discardTableWork([c.id]);
+  return ended;
 }
 
 /** Translate a line and hand it back. The words are not written to the database. */
@@ -780,7 +828,7 @@ export async function prepareWorldMessage(user: AuthUser, conversationId: string
   if (c.status !== 'ACTIVE' || c.endsAt < new Date()) {
     if (c.status === 'ACTIVE') {
       await db.worldConversation.update({ where: { id: c.id }, data: { status: 'ENDED', endedAt: new Date() } });
-      await wipeHourRecords([c.id]);
+      await discardTableWork([c.id]);
     }
     throw new HttpError(409, 'This table has closed.', 'ended');
   }
@@ -956,7 +1004,10 @@ export async function pullSignals(userId: string, conversationId: string, after?
 export async function listPeople(viewerId: string) {
   await syncCafeGuests();
   const [banned, met] = await Promise.all([blockedIds(viewerId), metPartnerIds(viewerId)]);
-  const skip = new Set([...banned, ...met]);
+  const metPeople = met.size
+    ? await db.user.findMany({ where: { id: { in: [...met] }, synthetic: false }, select: { id: true } })
+    : [];
+  const skip = new Set([...banned, ...metPeople.map((person) => person.id)]);
   const users = await db.user.findMany({
     where: {
       id: { not: viewerId, notIn: [...skip] },

@@ -10,7 +10,7 @@ const NAV = [
   { href: '/app/world#meet', label: 'Meet someone', icon: '☕' },
   { href: '/app/world/map', label: 'Map', icon: '◎' },
   { href: '/app/conversations', label: 'Past contacts', icon: '✉' },
-  { href: '/app/languages', label: 'Language', icon: '文' },
+  { href: '/app/languages', label: 'Language', icon: 'A' },
   { href: '/app/photos', label: 'Photo', icon: '▣' },
   { href: '/app/privacy', label: 'Account', icon: '⚿' },
 ];

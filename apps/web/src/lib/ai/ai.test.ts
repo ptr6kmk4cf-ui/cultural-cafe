@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { hardFilter, matchRequestedPhoto, tagMatchesDealbreaker } from './tasks';
+import { detectLanguageHeuristic, normalizeLang, translationFitsLanguage } from './lang';
 import { detectSensitiveRequest, detectStopRequest, filterUnsafeSuggestion, looksLikeInjection, sanitizeUntrusted } from './safety';
-import { detectLanguageHeuristic, normalizeLang } from './lang';
 
 const prefs = { ageMin: 25, ageMax: 38, location: '', maxDistanceKm: 100, relationshipGoals: [], interests: [], lifestyle: [], physicalPreferences: '', dealbreakers: ['smoker'] };
 
@@ -89,6 +89,13 @@ test('heuristic language detection', () => {
   assert.equal(detectLanguageHeuristic('Cześć, jak minął ci dzień? Też nie wiem'), 'pl');
   assert.equal(detectLanguageHeuristic('Merhaba, günün nasıl geçti? Ben çok iyiyim'), 'tr');
   assert.equal(detectLanguageHeuristic('Hej, hur var din dag? Jag är också trött'), 'sv');
+});
+
+test('an English reader does not keep a Chinese translation', () => {
+  const chinese = '你好。在里斯本，电车在上坡时会发出吱吱声。你的城市有什么声音？';
+  assert.equal(translationFitsLanguage(chinese, 'en'), false);
+  assert.equal(translationFitsLanguage(chinese, 'zh'), true);
+  assert.equal(translationFitsLanguage('Hello from Lisbon. The tram creaks on the hills.', 'en'), true);
 });
 
 test('language codes from the model or browser normalize to supported codes', () => {

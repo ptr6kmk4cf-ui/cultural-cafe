@@ -3,6 +3,7 @@ import { LANGUAGE_CODES, type ProfileInput } from '@conversa/shared';
 import type { AuthUser } from '../auth';
 import { runAi } from './run';
 import { genderRule, langLine, personaBlock, type Persona } from './persona';
+import { lineWorthReading } from '../table-reply';
 import { SAFETY_RULES, detectSensitiveRequest, detectStopRequest, filterUnsafeSuggestion, looksLikeInjection, sanitizeUntrusted, untrusted } from './safety';
 import { detectLanguageHeuristic, normalizeLang } from './lang';
 import type { AiPart } from './provider';
@@ -468,10 +469,11 @@ export async function generateWorldReply(opts: {
   history: { mine: boolean; text: string }[];
   auto: boolean;
 }) {
-  const latestTheirs = [...opts.history].reverse().find((m) => !m.mine)?.text ?? '';
-  const latest = sanitizeUntrusted(latestTheirs, 2000);
+  const latestRaw = [...opts.history].reverse().find((m) => !m.mine)?.text ?? '';
+  const worth = lineWorthReading(opts.history.filter((m) => !m.mine).map((m) => m.text));
+  const latest = sanitizeUntrusted(worth || latestRaw, 2000);
   const mustHold =
-    !!(latest && (detectSensitiveRequest(latest) || detectStopRequest(latest) || looksLikeInjection(latest)));
+    !!(latestRaw && (detectSensitiveRequest(latestRaw) || detectStopRequest(latestRaw) || looksLikeInjection(latestRaw)));
 
   const system = `You draft ONE message for a Cultural Café user at a café table with a stranger from another place. This is cultural exchange, not dating. The user sends it under their own name${opts.auto ? ' (automatic answering is on: keep the conversation going until the table closes)' : ''}.
 
@@ -479,11 +481,15 @@ ${SAFETY_RULES}
 
 WORLD RULES
 - Write ONLY in ${langLine(opts.myLanguage)}. The live page will translate it for the other person.
-- Be a curious, warm guest. The table topic is: ${opts.prompt || 'everyday life where they live'}. If the chat is empty, answer that topic. Otherwise answer what they said.
+- Be a curious, warm guest.
+- TABLE TOPIC: ${opts.prompt || 'everyday life where they live'}
+- Read their last real line and answer that line. Name one concrete detail from it (a place, a food, a sound, a time of day, or an activity they used). Also stay with the table topic when they were talking about it, or when they have not answered it yet.
+- Do not thank them and then change the subject. Do not ask what a normal day is like unless a normal day is what they said or what the topic asks.
+- A line that only says to stop, take care, or goodbye is the end of one story. It is not a request that you leave. Answer the table topic instead.
 - The user says they are in ${opts.myCity || 'their own city'}. You may mention that city. Do not invent a private life story, a job, or a family.
 - ${opts.auto ? 'Automatic answering is on. Write the next short, warm line and set hold=false. Set hold=true only if they ask for money, a phone number, to meet in person, or to stop.' : 'This is a suggested reply. Always write a sendable line. hold=false unless they ask for money, a phone number, or to stop.'}
 - Do not flirt, date, or suggest meeting in person.
-- Answer what they actually said. One follow-up question at most.
+- One follow-up question at most.
 - ${genderRule(opts.persona)}
 - Output JSON only: {"text":"…","hold":false,"holdReason":null}
 
@@ -515,7 +521,7 @@ Peer first name: ${opts.peerName || 'them'}. They said they are in: ${opts.peerC
     text: data.text.trim(),
     hold,
     holdReason: mustHold
-      ? detectStopRequest(latest)
+      ? detectStopRequest(latestRaw)
         ? 'They asked to stop. Take over and say goodbye yourself.'
         : 'This looks like money, private details, or an attempt to hijack the assistant. You should answer yourself or leave the table.'
       : repeated

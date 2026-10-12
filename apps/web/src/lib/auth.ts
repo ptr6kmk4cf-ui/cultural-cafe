@@ -4,6 +4,7 @@ import type { NextRequest } from 'next/server';
 import type { SessionKind, User } from '@prisma/client';
 import { db } from './db';
 import { randomToken, sha256 } from './crypto';
+import { discardFinishedWork } from './finished-work';
 import { HttpError } from './http';
 
 export const SESSION_COOKIE = 'conversa_session';
@@ -23,6 +24,7 @@ export async function verifyPassword(pw: string, hash: string) {
 export async function createSession(userId: string, kind: SessionKind = 'WEB', label?: string) {
   const token = randomToken();
   const days = kind === 'WEB' ? WEB_SESSION_DAYS : EXTENSION_SESSION_DAYS;
+  await db.session.deleteMany({ where: { userId, expiresAt: { lt: new Date() } } });
   await db.session.create({
     data: {
       userId,
@@ -51,7 +53,11 @@ async function userFromToken(token: string): Promise<AuthUser | null> {
     where: { tokenHash: sha256(token) },
     include: { user: { select: { id: true, email: true, name: true, role: true, plan: true } } },
   });
-  if (!session || session.expiresAt < new Date()) return null;
+  if (!session) return null;
+  if (session.expiresAt < new Date()) {
+    await db.session.delete({ where: { id: session.id } }).catch(() => {});
+    return null;
+  }
   if (Date.now() - session.lastUsedAt.getTime() > 5 * 60_000) {
     await db.session.update({ where: { id: session.id }, data: { lastUsedAt: new Date() } }).catch(() => {});
   }
@@ -106,6 +112,7 @@ export async function requireUser(req: NextRequest): Promise<AuthUser> {
   }
   const user = await userFromToken(token);
   if (!user) throw new HttpError(401, 'Session expired', 'unauthenticated');
+  await discardFinishedWork().catch(() => {});
   return user;
 }
 

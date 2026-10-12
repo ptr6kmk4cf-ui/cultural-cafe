@@ -13,9 +13,8 @@ export const POST = route(async (req) => {
     update: {},
     create: { blockerId: user.id, blockedId: b.userId },
   });
-  await db.worldInvite.updateMany({
-    where: { status: 'PENDING', OR: [{ fromId: user.id, toId: b.userId }, { fromId: b.userId, toId: user.id }] },
-    data: { status: 'CANCELLED' },
+  await db.worldInvite.deleteMany({
+    where: { OR: [{ fromId: user.id, toId: b.userId }, { fromId: b.userId, toId: user.id }] },
   });
   await expireStale();
   const conv = await activeConversation(user.id);

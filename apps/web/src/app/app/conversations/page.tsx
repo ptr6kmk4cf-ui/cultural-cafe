@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Badge, Empty, PageHeader, Spinner } from '@/components/ui';
+import { Alert, Badge, Empty, PageHeader, Spinner } from '@/components/ui';
 import { api } from '@/lib/client';
 
 type CafeHour = {
@@ -32,9 +32,32 @@ function pastContacts(hours: CafeHour[]) {
 export default function Conversations() {
   const [hours, setHours] = useState<CafeHour[] | null>(null);
   const [q, setQ] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState('');
   useEffect(() => {
-    api('/api/world/conversations').then((d) => setHours(d.conversations));
+    api('/api/world/conversations')
+      .then((d) => setHours(d.conversations))
+      .catch((e) => {
+        setError(e.message);
+        setHours([]);
+      });
   }, []);
+
+  async function remove(contact: PastContact) {
+    const peerId = contact.peer?.id;
+    if (!peerId || busy) return;
+    const name = contact.peer?.name ?? 'this person';
+    if (!confirm(`Remove ${name} from past contacts? Their table is discarded.`)) return;
+    setBusy(peerId);
+    setError('');
+    try {
+      await api('/api/world/contacts/forget', { body: { peerId } });
+      setHours((prev) => (prev ?? []).filter((hour) => hour.status === 'ACTIVE' || hour.peer?.id !== peerId));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+    setBusy('');
+  }
 
   const contacts = pastContacts(hours ?? []).filter((c) => {
     const hay = `${c.peer?.name ?? ''} ${c.peer?.city ?? ''} ${c.prompt?.title ?? ''}`.toLowerCase();
@@ -51,6 +74,7 @@ export default function Conversations() {
       <div className="mb-4">
         <input className="input max-w-xs" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
+      {error && <div className="mb-4"><Alert kind="error">{error}</Alert></div>}
       {!hours ? (
         <Spinner />
       ) : contacts.length === 0 ? (
@@ -62,7 +86,7 @@ export default function Conversations() {
           {contacts.map((c) => {
             const where = [c.peer?.city, c.peer?.country].filter(Boolean).join(', ');
             return (
-              <article key={c.peer?.id ?? c.id} className="flex items-center justify-between gap-3 px-5 py-4">
+              <article key={c.peer?.id ?? c.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
                 <div className="flex items-center gap-3">
                   <span className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-brand-500/40 to-amber-700/40 font-semibold text-white">{(c.peer?.name ?? 'C')[0]}</span>
                   <div>
@@ -77,9 +101,17 @@ export default function Conversations() {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   {c.peer?.guest && <Badge>Guest</Badge>}
                   <span className="text-xs text-ink-400">{new Date(c.startedAt).toLocaleDateString()}</span>
+                  <button
+                    type="button"
+                    className="btn-ghost px-2 py-1 text-xs text-red-300"
+                    disabled={busy === c.peer?.id}
+                    onClick={() => remove(c)}
+                  >
+                    {busy === c.peer?.id ? 'Removing…' : 'Remove'}
+                  </button>
                 </div>
               </article>
             );

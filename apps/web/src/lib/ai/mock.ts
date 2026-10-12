@@ -102,31 +102,29 @@ export async function mockComplete(req: AiRequest): Promise<AiResult> {
     }
     case 'cafe_guest': {
       const latest = between(text, 'latest');
+      const topic = (req.system.match(/TABLE TOPIC: (.+)/) || [])[1]?.trim() ?? '';
       const stop = latest ? detectStopRequest(latest) : false;
       const sensitive = latest ? /western union|money|iban/i.test(latest) : false;
       const lang = (req.system.match(/Write ONLY in [^(]+\((\w\w)\)/) || [])[1] || 'en';
       const p = PHRASES[lang] ?? PHRASES.en;
-      out = { text: stop || sensitive ? p.bye : latest ? `${p.reply} ${p.follow}` : p.hi };
+      const detail = latest.replace(/\s+/g, ' ').trim().slice(0, 80);
+      const line = stop || sensitive ? p.bye : detail ? `${p.reply} You said “${detail}”. ${topic}`.trim() : p.hi;
+      out = { text: line, english: line };
       break;
     }
     case 'world_reply': {
       const latest = between(text, 'latest_message');
+      const topic = (req.system.match(/TABLE TOPIC: (.+)/) || [])[1]?.trim() ?? '';
       const stop = latest ? detectStopRequest(latest) : false;
       const sensitive = /western union|money|iban/i.test(latest);
       const lang = (req.system.match(/Write ONLY in [^(]+\((\w\w)\)/) || [])[1] || 'en';
       const p = PHRASES[lang] ?? PHRASES.en;
-      const steps = [
-        'In my city the morning is the street waking up. What is morning like where you are?',
-        'On a normal Sunday I stay close to home. What do people do on Sunday there?',
-        'The market is where I hear the city. What do you hear at yours?',
-        'Rain changes the street here. People slow down. Does the weather change your day?',
-      ];
-      const next = steps.find((step) => !text.includes(step));
-      const line = stop || sensitive || !next ? p.bye : next;
+      const detail = latest.replace(/\s+/g, ' ').trim().slice(0, 80);
+      const line = stop || sensitive ? p.bye : detail ? `You said “${detail}”. ${topic}`.trim() : topic || p.hi;
       out = {
         text: line,
-        hold: stop || sensitive || !next,
-        holdReason: stop ? 'They asked to stop.' : sensitive ? 'Money or private details.' : !next ? 'The lines for this table are used up.' : null,
+        hold: stop || sensitive,
+        holdReason: stop ? 'They asked to stop.' : sensitive ? 'Money or private details.' : null,
       };
       break;
     }

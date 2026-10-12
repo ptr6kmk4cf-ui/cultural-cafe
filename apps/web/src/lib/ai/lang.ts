@@ -61,6 +61,20 @@ const SCRIPTS: [RegExp, string][] = [
  * Lightweight heuristic language detection, used as a fallback / sanity check
  * alongside the model's own detection (and by the offline mock provider).
  */
+/** The script of a line, when it is not Latin. Chinese, Japanese, Arabic and the rest. */
+export function scriptLanguage(text: string): string | null {
+  for (const [re, lang] of SCRIPTS) if (re.test(text)) return lang;
+  return null;
+}
+
+/** A translation into `target` may not arrive in another script. Kanji-only Japanese still counts as Japanese. */
+export function translationFitsLanguage(text: string, target: string): boolean {
+  const script = scriptLanguage(text);
+  if (!script || script === target) return true;
+  if (target === 'ja' && script === 'zh') return true;
+  return false;
+}
+
 export function detectLanguageHeuristic(text: string, fallback = 'en'): string {
   for (const [re, lang] of SCRIPTS) if (re.test(text)) return lang;
   const words = text.toLowerCase().normalize('NFC').match(/[\p{L}']+/gu) ?? [];
