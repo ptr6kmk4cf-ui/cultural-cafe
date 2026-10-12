@@ -115,10 +115,19 @@ export async function mockComplete(req: AiRequest): Promise<AiResult> {
       const sensitive = /western union|money|iban/i.test(latest);
       const lang = (req.system.match(/Write ONLY in [^(]+\((\w\w)\)/) || [])[1] || 'en';
       const p = PHRASES[lang] ?? PHRASES.en;
+      const steps = [
+        'In my city the morning is the street waking up. What is morning like where you are?',
+        'On a normal Sunday I stay close to home. What do people do on Sunday there?',
+        'The market is where I hear the city. What do you hear at yours?',
+        'Rain changes the street here. People slow down. Does the weather change your day?',
+      ];
+      const next = steps.find((step) => !text.includes(step));
+      const quote = latest.replace(/\s+/g, ' ').trim().slice(0, 80);
+      const line = stop || sensitive || !next ? p.bye : quote ? `“${quote}” — ${next}` : next;
       out = {
-        text: stop || sensitive ? p.bye : `[Mock AI] ${p.reply} ${p.follow}`,
-        hold: stop || sensitive,
-        holdReason: stop ? 'They asked to stop.' : sensitive ? 'Money or private details.' : null,
+        text: line,
+        hold: stop || sensitive || !next,
+        holdReason: stop ? 'They asked to stop.' : sensitive ? 'Money or private details.' : !next ? 'The lines for this table are used up.' : null,
       };
       break;
     }

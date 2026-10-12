@@ -8,6 +8,7 @@ const NAV = [
   { href: '/app', label: 'Home', icon: '⌂' },
   { href: '/app/world#profile', label: 'Your profile', icon: '☺' },
   { href: '/app/world#meet', label: 'Meet someone', icon: '☕' },
+  { href: '/app/world/map', label: 'Map', icon: '◎' },
   { href: '/app/conversations', label: 'Past contacts', icon: '✉' },
   { href: '/app/languages', label: 'Language', icon: '文' },
   { href: '/app/photos', label: 'Photo', icon: '▣' },
@@ -32,9 +33,11 @@ export function Sidebar({ user }: { user: { name: string; email: string; plan: s
   };
   const current = path.startsWith('/app/admin/links')
     ? 'Live links'
-    : path.startsWith('/app/world/')
-      ? 'Café'
-      : (NAV.find((n) => active(n.href))?.label ?? (path.startsWith('/app/admin') ? 'Admin' : 'Cultural Café'));
+    : path.startsWith('/app/world/map')
+      ? 'Map'
+      : path.startsWith('/app/world/')
+        ? 'Café'
+        : (NAV.find((n) => active(n.href))?.label ?? (path.startsWith('/app/admin') ? 'Admin' : 'Cultural Café'));
 
   return (
     <>

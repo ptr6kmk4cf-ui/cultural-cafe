@@ -17,5 +17,6 @@ export const POST = route<{ id: string }>(async (req, { id }) => {
   const user = await requireUser(req);
   rateLimit(`world-guest:${user.id}`, 40, 60_000);
   const b = await parseBody(req, Body);
-  return json({ message: await replyAsCafeGuest(user.id, id, b.history) });
+  const result = await replyAsCafeGuest(user.id, id, b.history);
+  return json({ message: result.message, closed: result.closed });
 });

@@ -27,6 +27,7 @@ async function upsertUser(
     bio?: string;
     interests?: string[];
     world?: boolean;
+    inCafe?: boolean;
   },
 ) {
   const passwordHash = await bcrypt.hash(password, 12);
@@ -68,13 +69,13 @@ async function upsertUser(
       },
       worldProfile: {
         create: {
-          optedIn: extra?.world ?? false,
+          optedIn: extra?.inCafe ?? false,
           city: extra?.city ?? (extra?.world ? '' : 'Paris'),
           country: extra?.country ?? (extra?.world ? '' : 'France'),
           bio: extra?.bio ? encrypt(extra.bio) : '',
-          available: extra?.world ?? false,
+          available: extra?.inCafe ?? false,
           lastSeenAt: new Date(),
-          queuedAt: extra?.world ? new Date() : null,
+          queuedAt: extra?.inCafe ? new Date() : null,
         },
       },
     },
@@ -88,23 +89,23 @@ async function upsertUser(
     await db.worldProfile.upsert({
       where: { userId: user.id },
       update: {
-        optedIn: extra.world ?? false,
+        optedIn: extra.inCafe ?? false,
         city: extra.city ?? '',
         country: extra.country ?? '',
         bio: extra.bio ? encrypt(extra.bio) : '',
-        available: extra.world ?? false,
+        available: extra.inCafe ?? false,
         lastSeenAt: new Date(),
-        queuedAt: extra.world ? new Date() : null,
+        queuedAt: extra.inCafe ? new Date() : null,
       },
       create: {
         userId: user.id,
-        optedIn: extra.world ?? false,
+        optedIn: extra.inCafe ?? false,
         city: extra.city ?? '',
         country: extra.country ?? '',
         bio: extra.bio ? encrypt(extra.bio) : '',
-        available: extra.world ?? false,
+        available: extra.inCafe ?? false,
         lastSeenAt: new Date(),
-        queuedAt: extra.world ? new Date() : null,
+        queuedAt: extra.inCafe ? new Date() : null,
       },
     });
   }

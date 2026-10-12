@@ -59,13 +59,16 @@ export default async function Home() {
               <h2 className="text-lg font-bold text-white">Meet someone</h2>
               <p className="mt-1 text-sm text-ink-300">
                 {profileReady
-                  ? 'Meet someone now, or open a profile and sit down.'
-                  : 'This comes after your profile. You will meet someone now, or open a profile and sit down.'}
+                  ? 'Tap a name, or pick a country on the map and then a city.'
+                  : 'This comes after your profile. Then you tap a name, or pick a country and a city on the map.'}
               </p>
             </div>
           </div>
           {profileReady ? (
-            <Link href="/app/world#meet" className="btn-primary">Meet someone</Link>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/app/world#meet" className="btn-primary">Meet someone</Link>
+              <Link href="/app/world/map" className="btn-secondary">Open the map</Link>
+            </div>
           ) : (
             <span className="text-sm text-ink-400">After your profile</span>
           )}

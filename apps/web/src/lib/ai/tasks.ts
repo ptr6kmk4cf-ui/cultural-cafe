@@ -508,7 +508,9 @@ Peer first name: ${opts.peerName || 'them'}. They said they are in: ${opts.peerC
     WorldReplySchema,
   );
   const unsafe = !filterUnsafeSuggestion(data.text, opts.persona.aboutMe);
-  const hold = mustHold || data.hold || !data.text.trim() || unsafe;
+  const core = (value: string) => value.replace(/^“[^”]{0,120}”\s*—\s*/, '').replace(/\s+/g, ' ').trim();
+  const repeated = !!core(data.text) && opts.history.some((m) => m.mine && core(m.text) === core(data.text));
+  const hold = mustHold || data.hold || !data.text.trim() || unsafe || repeated;
   return {
     text: data.text.trim(),
     hold,
@@ -516,7 +518,9 @@ Peer first name: ${opts.peerName || 'them'}. They said they are in: ${opts.peerC
       ? detectStopRequest(latest)
         ? 'They asked to stop. Take over and say goodbye yourself.'
         : 'This looks like money, private details, or an attempt to hijack the assistant. You should answer yourself or leave the table.'
-      : data.holdReason ?? (hold ? 'The draft was held back. Write this one yourself.' : null),
+      : repeated
+        ? 'Answering stopped. That line was already sent.'
+        : data.holdReason ?? (hold ? 'The draft was held back. Write this one yourself.' : null),
     mock,
   };
 }

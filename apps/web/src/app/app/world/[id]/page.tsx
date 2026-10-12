@@ -202,6 +202,7 @@ export default function WorldChat() {
         const next = place(m);
         return next.some((x) => x.id === reply.message.id) ? next : [...next, reply.message];
       });
+      if (reply.closed) rememberAuto(false);
       return;
     }
     try {
@@ -289,6 +290,13 @@ export default function WorldChat() {
         showDraft((r.text || '').trim() || localDraft());
         return;
       }
+      const drafted = (r.text || '').trim();
+      if (drafted && msgsRef.current.some((m) => m.mine && m.text.trim() === drafted)) {
+        if (handledId) lastHandled.current = handledId;
+        rememberAuto(false);
+        show('Answering stopped. That line was already sent.', 'error');
+        return;
+      }
       if (r.hold) {
         if (handledId) lastHandled.current = handledId;
         rememberAuto(false);
@@ -349,7 +357,21 @@ export default function WorldChat() {
   const waitFor = last && !last.mine && !last.id.startsWith('local_') ? last.id : '';
 
   useEffect(() => {
-    if (guestHour || !auto || ended || !waitFor || waitFor === lastHandled.current || assistRef.current) {
+    if (!auto || !guestHour) return;
+    const guests = msgs.filter((m) => !m.mine);
+    const lastGuest = guests.at(-1);
+    if (!lastGuest) return;
+    const body = (lastGuest.translation || lastGuest.text).replace(/^“[^”]{0,120}”\s*—\s*/, '').replace(/\s+/g, ' ').trim();
+    const repeated = !!body && guests.slice(0, -1).some((m) => (m.translation || m.text).replace(/^“[^”]{0,120}”\s*—\s*/, '').replace(/\s+/g, ' ').trim() === body);
+    if (!repeated) return;
+    lastHandled.current = lastGuest.id;
+    rememberAuto(false);
+    show('Answering stopped. That line was already said.');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auto, guestHour, msgs]);
+
+  useEffect(() => {
+    if (!auto || ended || !waitFor || waitFor === lastHandled.current || assistRef.current) {
       if (!assistRef.current) setReading(false);
       return;
     }
@@ -419,13 +441,13 @@ export default function WorldChat() {
       <button className="btn-primary text-xs" disabled={busy} onClick={() => assist(false)}>
         {drafting ? 'Writing…' : 'Suggest a reply'}
       </button>
-      {!guestHour && (auto ? (
+      {auto ? (
         <button className="btn-secondary text-xs" onClick={() => { rememberAuto(false); show('Answering off — you are writing again.'); }}>Stop automatic answering</button>
       ) : (
         <button className="btn-secondary text-xs" disabled={busy} onClick={startAuto}>
           Answer automatically
         </button>
-      ))}
+      )}
     </div>
   );
 

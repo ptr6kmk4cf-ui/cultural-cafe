@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { languageName } from '@conversa/shared';
-import { aiConfig, complete, extractJson } from '../ai/provider';
+import { complete, extractJson } from '../ai/provider';
 import { detectSensitiveRequest, detectStopRequest, sanitizeUntrusted, untrusted } from '../ai/safety';
 import { encrypt } from '../crypto';
 import { db } from '../db';
@@ -9,6 +9,8 @@ import { HttpError, notFound } from '../http';
 
 /** How many café seats stay open for guests. One real opted-in person closes one seat. */
 export const CAFE_GUEST_CAP = 6;
+/** Seeded demo logins. They are not people waiting in the café, and a visit removes them from it. */
+export const CAFE_FIXTURE_EMAIL_SUFFIX = '@conversa.local';
 const SYNC_MS = 20_000;
 const CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 
@@ -190,10 +192,31 @@ function spokenByThem(raw: string) {
   return raw.replace(/^\[Mock translation to [^\]]+\]\s*/i, '').replace(/\s+/g, ' ').trim().slice(0, 90);
 }
 
+/** Fixed lines for automatic answering at a guest table. Each one is sent once, then answering stops. */
+const TABLE_AUTO_LINES = [
+  'In my city the morning is the street waking up. What is morning like where you are?',
+  'On a normal Sunday I stay close to home. What do people do on Sunday there?',
+  'The market is where I hear the city. What do you hear at yours?',
+  'Rain changes the street here. People slow down. Does the weather change your day?',
+];
+
+/** The next hardcoded line, or null when every line was already sent. */
+export function nextHardcodedTableLine(saidByMe: string[]) {
+  return TABLE_AUTO_LINES.find((line) => !saidByMe.some((previous) => previous.includes(line))) ?? null;
+}
+
+/** Quotes what they just said, then adds the next hardcoded line. */
+export function hardcodedTableReply(saidByMe: string[], latestFromThem: string) {
+  const next = nextHardcodedTableLine(saidByMe);
+  if (!next) return null;
+  const quote = latestFromThem.replace(/\s+/g, ' ').trim().slice(0, 80);
+  return quote ? `“${quote}” — ${next}` : next;
+}
+
 /** The next guest line. Skips topics already used, and ties the answer to what they just said. */
 export function guestFollowUp(email: string, said: string[], latest: string) {
   const lines = FOLLOW[email] ?? [];
-  const next = lines.find((line) => !said.some((previous) => previous.includes(line.say))) ?? lines.at(-1);
+  const next = lines.find((line) => !said.some((previous) => previous.includes(line.say)));
   if (!next) return null;
   const snippet = spokenByThem(latest);
   const fresh = !said.some((previous) => previous.includes(next.say));
@@ -223,10 +246,24 @@ export function syncCafeGuests() {
 }
 
 async function paintGuests() {
+  await db.worldProfile.updateMany({
+    where: { user: { synthetic: false, email: { endsWith: CAFE_FIXTURE_EMAIL_SUFFIX } } },
+    data: { optedIn: false, available: false, queuedAt: null },
+  });
+  await db.worldInvite.updateMany({
+    where: {
+      status: 'PENDING',
+      OR: [
+        { from: { email: { endsWith: CAFE_FIXTURE_EMAIL_SUFFIX } } },
+        { to: { email: { endsWith: CAFE_FIXTURE_EMAIL_SUFFIX } } },
+      ],
+    },
+    data: { status: 'CANCELLED' },
+  });
   const realOptedIn = await db.user.count({
     where: {
       synthetic: false,
-      email: { not: { endsWith: '@conversa.local' } },
+      email: { not: { endsWith: CAFE_FIXTURE_EMAIL_SUFFIX } },
       worldProfile: { is: { optedIn: true } },
     },
   });
@@ -358,18 +395,16 @@ export async function replyAsCafeGuest(userId: string, conversationId: string, h
   let text = kind === 'reply' ? '' : guest[kind];
   let translation: string | null = null;
   let translationLang: string | null = null;
-  if (kind === 'reply' && aiConfig().isMock) {
+  if (kind === 'reply') {
     const line = guestFollowUp(guest.email, said, latest);
-    text = line?.text || guest.reply;
-    if (line && humanLang !== guest.language) {
-      translation = line.english;
-      translationLang = 'en';
-    }
-  } else if (kind === 'reply') {
-    text = await guestReply(guest, turns);
-    if (said.some((previous) => previous.includes(text))) {
-      const line = guestFollowUp(guest.email, said, latest);
-      if (line) text = line.text;
+    if (!line) {
+      text = guest.bye;
+    } else {
+      text = line.text;
+      if (humanLang !== guest.language) {
+        translation = line.english;
+        translationLang = 'en';
+      }
     }
   }
   const spoken = detectSensitiveRequest(text) ? guest.bye : text;
@@ -384,39 +419,10 @@ export async function replyAsCafeGuest(userId: string, conversationId: string, h
     create: { conversationId, userId: otherId, phase: 'open' },
     update: { phase: 'open' },
   });
-  return packGuestLine(guest, spoken, translation, translationLang, !!latest && detectSensitiveRequest(latest));
-}
-
-async function guestReply(guest: Guest, turns: GuestTurn[]) {
-  const latest = [...turns].reverse().find((turn) => turn.mine);
-  const latestText = latest ? (latest.translation || latest.text) : '';
-  const lines = turns.map((turn) => `${turn.mine ? 'Them' : guest.name}: ${turn.mine ? (turn.translation || turn.text) : turn.text}`).join('\n');
-  try {
-    const result = await complete({
-      task: 'cafe_guest',
-      system: [
-        `You are ${guest.name}, a café guest from ${guest.city}, ${guest.country}. You are not a real member of this site.`,
-        'If asked whether you are real, a bot, or AI, say plainly that you are a café guest keeping the table company until more people join.',
-        `Everyday culture only, from this card: ${guest.bio}`,
-        'Answer their latest sentence. Add one new detail from your city, then one new question.',
-        'Do not repeat a sentence or a question you already used.',
-        'Do not flirt, do not ask for contact details, and do not invent a private life beyond the card.',
-        `Write ONLY in ${languageName(guest.language)} (${guest.language}).`,
-        'One or two short sentences. Output JSON {"text":"…"}.',
-        'If they ask you to stop, or ask for money, a phone number, or an address, reply with a short goodbye and nothing else.',
-      ].join('\n'),
-      messages: [{ role: 'user', content: `${untrusted('history', lines, 4000)}\n${untrusted('latest', latestText, 500)}` }],
-      json: true,
-      temperature: 0.7,
-      maxTokens: 220,
-    });
-    const data = extractJson(result.text) as { text?: unknown };
-    const text = typeof data?.text === 'string' ? data.text.trim().slice(0, 800) : '';
-    if (text) return text;
-  } catch (err) {
-    console.error('[cafe-guests] reply', err);
-  }
-  return guest.reply;
+  return {
+    message: packGuestLine(guest, spoken, translation, translationLang, !!latest && detectSensitiveRequest(latest)),
+    closed: spoken === guest.bye,
+  };
 }
 
 async function gloss(text: string, guest: Guest, humanLang: string, kind: keyof GuestLine, catalogLine: boolean) {

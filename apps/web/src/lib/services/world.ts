@@ -12,7 +12,7 @@ import { detectLanguageHeuristic, normalizeLang } from '../ai/lang';
 import { translateText } from '../ai/tasks';
 import { detectSensitiveRequest } from '../ai/safety';
 import { parseSignalBody, signalPhase } from '../world-signal';
-import { syncCafeGuests } from './cafe-guests';
+import { CAFE_FIXTURE_EMAIL_SUFFIX, syncCafeGuests } from './cafe-guests';
 
 export const WORLD_SESSION_MS = 60 * 60_000;
 export const WORLD_INVITE_MS = 10 * 60_000;
@@ -588,7 +588,7 @@ export async function joinQueue(user: AuthUser) {
       userId: { not: user.id, notIn: [...banned, ...met] },
     },
     take: 20,
-    include: { user: { select: { synthetic: true } } },
+    include: { user: { select: { synthetic: true, email: true } } },
     orderBy: { queuedAt: 'asc' },
   });
   const busy = new Set<string>();
@@ -615,24 +615,49 @@ export async function joinQueue(user: AuthUser) {
       busy.add(p.toId);
     }
   }
-  const free = candidates.filter((c) => !busy.has(c.userId));
+  const free = candidates.filter((c) => !busy.has(c.userId) && !c.user.email.endsWith(CAFE_FIXTURE_EMAIL_SUFFIX));
   const realPartner = free.find((c) => !c.user.synthetic);
   let partner = realPartner;
   if (!partner) {
     const otherReal = await db.user.count({
-      where: { id: { not: user.id }, synthetic: false, worldProfile: { is: { optedIn: true } } },
+      where: {
+        id: { not: user.id },
+        synthetic: false,
+        email: { not: { endsWith: CAFE_FIXTURE_EMAIL_SUFFIX } },
+        worldProfile: { is: { optedIn: true } },
+      },
     });
     // A guest fills the queue only when nobody else has joined the café.
     if (otherReal === 0) partner = free.find((c) => c.user.synthetic);
   }
   if (!partner) return { state: 'queued' as const, invites: [] };
 
+  if (partner.user.synthetic) {
+    const invite = await db.worldInvite.create({
+      data: {
+        kind: 'RANDOM',
+        fromId: user.id,
+        toId: partner.userId,
+        acceptedByFrom: true,
+        acceptedByTo: true,
+        expiresAt: new Date(Date.now() + WORLD_INVITE_MS),
+      },
+    });
+    try {
+      const opened = await openAcceptedHour(invite, user);
+      return { state: 'chatting' as const, conversation: opened.conversation, invites: [] as Awaited<ReturnType<typeof serializeInvite>>[] };
+    } catch (err) {
+      await db.worldInvite.update({ where: { id: invite.id }, data: { status: 'CANCELLED' } });
+      throw err;
+    }
+  }
+
   const invite = await db.worldInvite.create({
     data: {
       kind: 'RANDOM',
       fromId: partner.userId,
       toId: user.id,
-      acceptedByFrom: partner.user.synthetic,
+      acceptedByFrom: false,
       expiresAt: new Date(Date.now() + WORLD_INVITE_MS),
     },
   });
@@ -935,6 +960,7 @@ export async function listPeople(viewerId: string) {
   const users = await db.user.findMany({
     where: {
       id: { not: viewerId, notIn: [...skip] },
+      email: { not: { endsWith: CAFE_FIXTURE_EMAIL_SUFFIX } },
       worldProfile: { optedIn: true },
     },
     select: { id: true, name: true, birthDate: true, synthetic: true, ...CARD_INCLUDE },

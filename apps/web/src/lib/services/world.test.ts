@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cafePromptFor, cafePromptFromPool } from '@conversa/shared';
 import { icePayload, parseSignalBody, signalPhase } from '../world-signal';
-import { cafeGuestEmails, guestFollowUp, guestSlots } from './cafe-guests';
+import { cafeGuestEmails, guestFollowUp, guestSlots, hardcodedTableReply, nextHardcodedTableLine } from './cafe-guests';
 import { INVITE_CODE_LENGTH, firstName, friendInviteMessage, friendJoinPath, isInviteCode, newInviteCode, normalizeInviteCode } from './world';
 
 test('World cards show a first name only', () => {
@@ -52,6 +52,26 @@ test('A café guest answers the last line and then changes topic', () => {
   assert.ok(second?.english.includes('We eat fish on Friday.'));
   assert.notEqual(first?.text, second?.text);
   assert.notEqual(first?.english, second?.english);
+  const said = [first?.text ?? '', second?.text ?? ''];
+  let latest = 'The bakery opens early.';
+  while (true) {
+    const next = guestFollowUp(email, said, latest);
+    if (!next) break;
+    said.push(next.text);
+    latest = 'Another ordinary day.';
+  }
+  assert.equal(guestFollowUp(email, said, latest), null);
+});
+
+test('Automatic answering at a guest table uses each hardcoded line once', () => {
+  const first = hardcodedTableReply([], 'Evenings smell like bread.');
+  const second = hardcodedTableReply([first ?? ''], 'We sit outside on Sunday.');
+  assert.ok(first?.includes('Evenings smell like bread.'));
+  assert.ok(second?.includes('We sit outside on Sunday.'));
+  assert.notEqual(first, second);
+  const said = [first ?? ''];
+  while (nextHardcodedTableLine(said)) said.push(nextHardcodedTableLine(said) as string);
+  assert.equal(hardcodedTableReply(said, 'Another line.'), null);
 });
 
 test('Café guests step aside as real people join', () => {

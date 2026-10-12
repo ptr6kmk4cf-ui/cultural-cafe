@@ -35,7 +35,6 @@ export default function WorldPage() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
-  const [queued, setQueued] = useState(false);
   const [toast, show] = useToast();
   const [form, setForm] = useState<Profile>({ optedIn: false, available: false, city: '', country: '', bio: '', portraitPhotoId: null });
   const [openTopic, setOpenTopic] = useState<string | null>(null);
@@ -63,6 +62,7 @@ export default function WorldPage() {
   useEffect(() => {
     setFromFriend(new URLSearchParams(window.location.search).get('from') === 'friend');
     load(true).catch((e) => setError(e.message));
+    api<{ people: Card[] }>('/api/world/people').then((d) => setPeople(d.people)).catch(() => {});
     api('/api/photos').then((d) => setPhotos(d.photos.filter((p: Photo) => p.category !== 'PRIVATE'))).catch(() => {});
     function jump() {
       const id = window.location.hash.replace('#', '');
@@ -83,15 +83,13 @@ export default function WorldPage() {
   }, []);
 
   const invites = state?.invites ?? [];
-  const waiting = queued || invites.length > 0;
+  const waiting = invites.length > 0;
   const watching = waiting || form.optedIn;
 
   useEffect(() => {
     if (!watching) return;
     const t = setInterval(() => {
-      load().then((s) => {
-        if (s?.invites?.length || s?.conversation) setQueued(false);
-      }).catch(() => {});
+      load().catch(() => {});
     }, waiting ? 2500 : 8000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -134,43 +132,12 @@ export default function WorldPage() {
     if (ok) showStep('meet');
   }
 
-  async function meetNow() {
-    setError('');
-    setBusy('queue');
-    try {
-      const r = await api('/api/world/queue', { body: { action: 'join' } });
-      setQueued(r.state === 'queued');
-      if (r.conversation) window.location.href = `/app/world/${r.conversation.id}`;
-      else await load();
-    } catch (e) {
-      setError((e as Error).message);
-    }
-    setBusy('');
-  }
-
-  async function cancelQueue() {
-    await api('/api/world/queue', { body: { action: 'leave' } });
-    setQueued(false);
-    await load();
-  }
-
   async function respond(id: string, accept: boolean) {
     setBusy(id);
     try {
       const r = await api(`/api/world/invites/${id}`, { body: { accept } });
       if (r.conversation) window.location.href = `/app/world/${r.conversation.id}`;
       else await load();
-    } catch (e) {
-      setError((e as Error).message);
-    }
-    setBusy('');
-  }
-
-  async function browse() {
-    setBusy('browse');
-    try {
-      const r = await api('/api/world/people');
-      setPeople(r.people);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -193,15 +160,16 @@ export default function WorldPage() {
     setBusy('');
   }
 
-  async function invite(id: string) {
-    setBusy(id);
+  async function invite(person: Card) {
+    setError('');
+    setBusy(person.id);
     try {
-      const r = await api<{ conversation?: { id: string } | null }>('/api/world/invite', { body: { toId: id } });
+      const r = await api<{ conversation?: { id: string } | null }>('/api/world/invite', { body: { toId: person.id } });
       if (r.conversation?.id) {
         window.location.href = `/app/world/${r.conversation.id}`;
         return;
       }
-      show('Invitation sent — they still have to accept');
+      setError(`${person.name} still has to accept. The table has not started. Tap a guest to sit down now.`);
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -212,13 +180,8 @@ export default function WorldPage() {
   if (!state) return error ? <Alert kind="error">{error}</Alert> : <Spinner />;
   const showFriendHint = fromFriend && !form.optedIn && !invites.some((i) => i.kind === 'FRIEND');
   const profileReady = !!form.city.trim() && form.optedIn;
-
-  function blockedUntilProfile() {
-    if (profileReady) return false;
-    setError('Save your profile first. Add your city, then tap Save and meet someone.');
-    showStep('profile');
-    return true;
-  }
+  const guests = (people ?? []).filter((p) => p.guest);
+  const others = (people ?? []).filter((p) => !p.guest);
 
   return (
     <div className="space-y-6">
@@ -238,7 +201,7 @@ export default function WorldPage() {
           <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-sm font-bold ${profileReady ? 'bg-brand-500 text-white' : 'border border-white/20 text-ink-300'}`}>2</span>
           <span>
             <span className="block text-sm font-semibold text-white">Meet someone</span>
-            <span className="block text-xs text-ink-400">{profileReady ? 'Choose how' : 'After your profile'}</span>
+            <span className="block text-xs text-ink-400">{profileReady ? 'Tap a name' : 'After your profile'}</span>
           </span>
         </a>
       </nav>
@@ -247,31 +210,9 @@ export default function WorldPage() {
         <Alert kind="info">A friend invited you. Save your profile first. You will both still accept before the table starts.</Alert>
       )}
       <p className="text-xs text-ink-400">
-        {state.quota.used} / {state.quota.limit} tables today · both people must accept · the table is timed · location is what you type
+        {state.quota.used} / {state.quota.limit} tables today · the table is timed · location is what you type
       </p>
 
-      {invites.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="font-semibold text-white">Waiting for both of you to accept</h2>
-          {invites.map((i) => (
-            <div key={i.id} className="card flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="font-medium text-white">{i.peer?.name ?? 'Someone'}{i.peer?.city ? ` · ${i.peer.city}` : ''}{i.peer?.country ? `, ${i.peer.country}` : ''}</p>
-                <p className="text-xs text-ink-400">
-                  {i.kind === 'FRIEND' ? (i.incoming ? 'A friend invited you' : 'You invited a friend') : i.kind === 'RANDOM' ? 'Random match' : 'From profile photos'} · they speak {i.peer?.languageLabel}
-                  {' · '}you {i.iAccepted ? 'accepted' : 'have not accepted'} · they {i.theyAccepted ? 'accepted' : 'have not accepted'}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                {!i.iAccepted && (
-                  <button className="btn-primary" disabled={!!busy} onClick={() => respond(i.id, true)}>Accept</button>
-                )}
-                <button className="btn-secondary" disabled={!!busy} onClick={() => respond(i.id, false)}>Decline</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
       <section id="profile" className="card scroll-mt-24 space-y-4">
         <p className="text-xs uppercase tracking-wide text-brand-300">Step 1</p>
@@ -316,76 +257,93 @@ export default function WorldPage() {
       <section id="meet" className="scroll-mt-24 space-y-4">
         <div>
           <p className="text-xs uppercase tracking-wide text-brand-300">Step 2</p>
-          <h2 className="mt-1 text-xl font-bold text-white">Meet someone new</h2>
-          <p className="mt-1 text-sm text-ink-300">Pick one of these. Someone you already know is a separate choice, further down.</p>
+          <h2 className="mt-1 text-xl font-bold text-white">Tap a name to sit down</h2>
+          <p className="mt-1 text-sm text-ink-300">
+            A guest opens the table right away. Someone else still has to say yes.{' '}
+            <Link href="/app/world/map" className="text-brand-300 hover:underline">Or pick a country on the map.</Link>
+          </p>
         </div>
-        {!profileReady && <Alert kind="info">Add your city and tap Save profile. Then use one of these.</Alert>}
-        <div className="grid gap-4 md:grid-cols-2">
-          {queued ? (
-            <div className="card space-y-3">
-              <p className="text-xs uppercase tracking-wide text-brand-300">Now</p>
-              <h3 className="text-xl font-bold text-white">Looking for someone…</h3>
-              <p className="text-sm text-ink-300">You will both see a card and must accept before anything is said.</p>
-              <button className="btn-secondary" onClick={cancelQueue}>Stop looking</button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="card text-left transition hover:border-brand-500/40"
-              disabled={!!busy}
-              onClick={() => { if (!blockedUntilProfile()) meetNow(); }}
-            >
-              <p className="text-xs uppercase tracking-wide text-brand-300">Now</p>
-              <h3 className="mt-1 text-xl font-bold text-white">Meet someone now</h3>
-              <p className="mt-2 text-sm text-ink-300">We find a person who is free. You both still accept before anything is said.</p>
-            </button>
-          )}
-          <button
-            type="button"
-            className="card text-left transition hover:border-brand-500/40"
-            disabled={!!busy}
-            onClick={() => { if (!blockedUntilProfile()) browse(); }}
-          >
-            <p className="text-xs uppercase tracking-wide text-brand-300">Choose</p>
-            <h3 className="mt-1 text-xl font-bold text-white">Open a profile</h3>
-            <p className="mt-2 text-sm text-ink-300">See who is here. A café guest can sit down right away. A person still has to say yes.</p>
-          </button>
-        </div>
-
-      {people && (
-        <div className="space-y-3">
-          <h2 className="font-semibold text-white">Profiles</h2>
-          {people.some((p) => p.guest) && (
-            <p className="text-xs text-ink-400">Café guests keep a few tables open until more people join. They are marked Guest, and they leave as the room fills up. Anyone you already met is in Past contacts, not here.</p>
-          )}
-          {people.length === 0 ? (
-            <Empty title="Nobody to meet yet">Use Meet someone now, or the link for someone you already know.</Empty>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {people.map((p) => (
-                <article key={p.id} className="card space-y-2">
+        {!profileReady && <Alert kind="info">Add your city and tap Save profile. The names show up here after that.</Alert>}
+        {profileReady && !people && <Spinner />}
+        {profileReady && people && guests.length === 0 && others.length === 0 && (
+          <Empty title="Nobody to meet yet">Use the link further down for someone you already know.</Empty>
+        )}
+        {profileReady && guests.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="font-semibold text-white">Here now</h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {guests.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="card space-y-2 text-left transition hover:border-brand-500/40"
+                  disabled={!!busy}
+                  onClick={() => invite(p)}
+                >
                   <div className="flex items-center gap-3">
                     <div className="grid h-14 w-14 place-items-center overflow-hidden rounded-2xl bg-white/10 text-lg font-bold text-white">
-                      {p.portraitUrl ? <img src={p.portraitUrl} alt="" className="h-full w-full object-cover" /> : p.name.slice(0, 1)}
+                      {p.portraitUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={p.portraitUrl} alt="" className="h-full w-full object-cover" />
+                      ) : p.name.slice(0, 1)}
                     </div>
                     <div>
-                      <p className="font-semibold text-white">{p.name} · {p.age}</p>
-                      <p className="text-xs text-ink-400">{[p.city, p.country].filter(Boolean).join(', ') || 'Somewhere'} · {p.languageLabel}</p>
-                      <span className="mt-1 flex flex-wrap gap-1">
-                        {p.guest && <Badge>Guest</Badge>}
-                        {p.online && !p.guest && <Badge tone="green">online</Badge>}
-                      </span>
+                      <p className="text-lg font-semibold text-white underline decoration-white/30 underline-offset-4">{p.name}</p>
+                      <p className="text-xs text-ink-400">{[p.city, p.country].filter(Boolean).join(', ')} · {p.languageLabel}</p>
+                      <span className="mt-1 inline-flex"><Badge>Guest</Badge></span>
                     </div>
                   </div>
                   {p.bio && <p className="text-sm text-ink-200">{p.bio}</p>}
-                  {p.interests.length > 0 && <p className="text-xs text-ink-400">{p.interests.slice(0, 5).join(' · ')}</p>}
-                  <button className="btn-primary w-full" disabled={!!busy} onClick={() => invite(p.id)}>{p.guest ? 'Meet' : 'Ask to meet'}</button>
-                </article>
+                  <span className="btn-primary w-full">{busy === p.id ? 'Opening the table…' : `Sit with ${p.name}`}</span>
+                </button>
               ))}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+        {profileReady && others.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="font-semibold text-white">They have to say yes</h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {others.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="card space-y-2 text-left transition hover:border-brand-500/40"
+                  disabled={!!busy}
+                  onClick={() => invite(p)}
+                >
+                  <p className="text-lg font-semibold text-white underline decoration-white/30 underline-offset-4">{p.name}</p>
+                  <p className="text-xs text-ink-400">{[p.city, p.country].filter(Boolean).join(', ') || 'Somewhere'} · {p.languageLabel}</p>
+                  {p.bio && <p className="text-sm text-ink-200">{p.bio}</p>}
+                  <span className="btn-secondary w-full">{busy === p.id ? 'Asking…' : `Ask ${p.name}`}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {invites.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="font-semibold text-white">Still waiting</h3>
+            {invites.map((i) => (
+              <div key={i.id} className="card flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-white">{i.peer?.name ?? 'Someone'}{i.peer?.city ? ` · ${i.peer.city}` : ''}</p>
+                  <p className="text-sm text-ink-300">
+                    {i.iAccepted
+                      ? 'You said yes. The table starts when they say yes. Until then, sit with a guest above.'
+                      : 'Tap Accept to sit down, or Decline to skip them.'}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  {!i.iAccepted && (
+                    <button className="btn-primary" disabled={!!busy} onClick={() => respond(i.id, true)}>Accept</button>
+                  )}
+                  <button className="btn-secondary" disabled={!!busy} onClick={() => respond(i.id, false)}>Decline</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <div className="card">
