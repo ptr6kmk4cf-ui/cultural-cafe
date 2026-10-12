@@ -122,8 +122,7 @@ export async function mockComplete(req: AiRequest): Promise<AiResult> {
         'Rain changes the street here. People slow down. Does the weather change your day?',
       ];
       const next = steps.find((step) => !text.includes(step));
-      const quote = latest.replace(/\s+/g, ' ').trim().slice(0, 80);
-      const line = stop || sensitive || !next ? p.bye : quote ? `“${quote}” — ${next}` : next;
+      const line = stop || sensitive || !next ? p.bye : next;
       out = {
         text: line,
         hold: stop || sensitive || !next,

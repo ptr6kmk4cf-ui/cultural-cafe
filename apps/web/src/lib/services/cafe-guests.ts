@@ -188,10 +188,6 @@ const FOLLOW: Record<string, { say: string; english: string }[]> = {
   ],
 };
 
-function spokenByThem(raw: string) {
-  return raw.replace(/^\[Mock translation to [^\]]+\]\s*/i, '').replace(/\s+/g, ' ').trim().slice(0, 90);
-}
-
 /** Fixed lines for automatic answering at a guest table. Each one is sent once, then answering stops. */
 const TABLE_AUTO_LINES = [
   'In my city the morning is the street waking up. What is morning like where you are?',
@@ -205,23 +201,17 @@ export function nextHardcodedTableLine(saidByMe: string[]) {
   return TABLE_AUTO_LINES.find((line) => !saidByMe.some((previous) => previous.includes(line))) ?? null;
 }
 
-/** Quotes what they just said, then adds the next hardcoded line. */
-export function hardcodedTableReply(saidByMe: string[], latestFromThem: string) {
-  const next = nextHardcodedTableLine(saidByMe);
-  if (!next) return null;
-  const quote = latestFromThem.replace(/\s+/g, ' ').trim().slice(0, 80);
-  return quote ? `“${quote}” — ${next}` : next;
+/** The next hardcoded line, with nothing pasted in front of it. */
+export function hardcodedTableReply(saidByMe: string[], _latestFromThem: string) {
+  return nextHardcodedTableLine(saidByMe);
 }
 
-/** The next guest line. Skips topics already used, and ties the answer to what they just said. */
-export function guestFollowUp(email: string, said: string[], latest: string) {
+/** The next guest line. Each topic is said once, on its own. */
+export function guestFollowUp(email: string, said: string[], _latest: string) {
   const lines = FOLLOW[email] ?? [];
   const next = lines.find((line) => !said.some((previous) => previous.includes(line.say)));
   if (!next) return null;
-  const snippet = spokenByThem(latest);
-  const fresh = !said.some((previous) => previous.includes(next.say));
-  const english = snippet ? `“${snippet}” — ${next.english}` : next.english;
-  return { text: fresh ? next.say : `${next.say} ${snippet}`.trim(), english };
+  return { text: next.say, english: next.english };
 }
 
 function inviteCode() {

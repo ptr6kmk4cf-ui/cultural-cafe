@@ -48,8 +48,10 @@ test('A café guest answers the last line and then changes topic', () => {
   const email = 'guest.lena@culturalcafe.invalid';
   const first = guestFollowUp(email, [], 'The tram in my city is loud.');
   const second = guestFollowUp(email, [first?.text ?? ''], 'We eat fish on Friday.');
-  assert.ok(first?.english.includes('The tram in my city is loud.'));
-  assert.ok(second?.english.includes('We eat fish on Friday.'));
+  assert.equal(first?.english.includes('The tram in my city is loud.'), false);
+  assert.equal(second?.english.includes('We eat fish on Friday.'), false);
+  assert.match(first?.english ?? '', /Tram 28/);
+  assert.match(second?.english ?? '', /grilled fish/);
   assert.notEqual(first?.text, second?.text);
   assert.notEqual(first?.english, second?.english);
   const said = [first?.text ?? '', second?.text ?? ''];
@@ -66,8 +68,10 @@ test('A café guest answers the last line and then changes topic', () => {
 test('Automatic answering at a guest table uses each hardcoded line once', () => {
   const first = hardcodedTableReply([], 'Evenings smell like bread.');
   const second = hardcodedTableReply([first ?? ''], 'We sit outside on Sunday.');
-  assert.ok(first?.includes('Evenings smell like bread.'));
-  assert.ok(second?.includes('We sit outside on Sunday.'));
+  assert.equal(first?.includes('Evenings smell like bread.'), false);
+  assert.equal(second?.includes('We sit outside on Sunday.'), false);
+  assert.match(first ?? '', /morning is the street waking up/);
+  assert.match(second ?? '', /normal Sunday/);
   assert.notEqual(first, second);
   const said = [first ?? ''];
   while (nextHardcodedTableLine(said)) said.push(nextHardcodedTableLine(said) as string);

@@ -9,6 +9,14 @@ import { deviceKeepsLines, forgetDeviceLines, loadDeviceLines, saveDeviceLines, 
 import { useWorldPeer } from '@/lib/world-peer';
 
 type Msg = { id: string; seq?: number; mine: boolean; text: string; language: string; translation: string | null; translationLang: string | null; flagged: boolean; createdAt: string };
+
+/** Drops a pasted quote so an old line does not sit in front of the new one. */
+function visibleLine(raw: string) {
+  const text = raw.replace(/\s+/g, ' ').trim();
+  if (!text.startsWith('“') && !text.startsWith('"')) return text;
+  const last = text.split(' — ').pop()?.trim() ?? '';
+  return last || text;
+}
 type Conv = {
   id: string;
   status: string;
@@ -361,8 +369,8 @@ export default function WorldChat() {
     const guests = msgs.filter((m) => !m.mine);
     const lastGuest = guests.at(-1);
     if (!lastGuest) return;
-    const body = (lastGuest.translation || lastGuest.text).replace(/^“[^”]{0,120}”\s*—\s*/, '').replace(/\s+/g, ' ').trim();
-    const repeated = !!body && guests.slice(0, -1).some((m) => (m.translation || m.text).replace(/^“[^”]{0,120}”\s*—\s*/, '').replace(/\s+/g, ' ').trim() === body);
+    const body = visibleLine(lastGuest.translation || lastGuest.text);
+    const repeated = !!body && guests.slice(0, -1).some((m) => visibleLine(m.translation || m.text) === body);
     if (!repeated) return;
     lastHandled.current = lastGuest.id;
     rememberAuto(false);
@@ -502,7 +510,7 @@ export default function WorldChat() {
         )}
         {msgs.map((m) => {
           const who = m.mine ? 'You' : (conv?.peer?.name ?? 'Them');
-          const main = m.mine ? m.text : (m.translation || m.text);
+          const main = visibleLine(m.mine ? m.text : (m.translation || m.text));
           return (
             <div key={m.id} className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${m.mine ? 'ml-auto bg-brand-500/20 text-white' : 'mr-auto bg-white/5 text-ink-100'}`}>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-300">{who}</p>
