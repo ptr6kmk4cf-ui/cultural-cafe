@@ -5,8 +5,8 @@ import { Alert, Badge, PageHeader, Spinner } from '@/components/ui';
 import { api } from '@/lib/client';
 
 const PLANS = [
-  { id: 'FREE', name: 'Free', price: '€0', features: ['2 café hours a day', 'Live translation', 'Draft a reply, or let Cultural Café answer the hour'] },
-  { id: 'PREMIUM', name: 'Premium', price: '€14.99 / month', features: ['20 café hours a day', 'Live translation', 'Draft a reply, or let Cultural Café answer the hour', 'Video later'] },
+  { id: 'FREE', name: 'Free', price: '€0', features: ['2 tables a day', 'Live translation', 'Draft a reply, or let Cultural Café answer at the table'] },
+  { id: 'PREMIUM', name: 'Premium', price: '€14.99 / month', features: ['20 tables a day', 'Live translation', 'Draft a reply, or let Cultural Café answer at the table', 'Video later'] },
 ];
 
 export default function Subscription() {
@@ -34,7 +34,7 @@ export default function Subscription() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Plan" subtitle="More café hours when you need them. Video comes later." />
+      <PageHeader title="Plan" subtitle="More tables when you need them. Video comes later." />
       {status === 'success' && <Alert kind="success">Thanks! Your plan updates as soon as Stripe confirms the payment.</Alert>}
       {error && <Alert kind="warning">{error}</Alert>}
       <div className="grid gap-4 md:grid-cols-2">

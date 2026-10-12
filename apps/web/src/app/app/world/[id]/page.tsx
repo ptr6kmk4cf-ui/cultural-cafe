@@ -5,9 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { isRtl } from '@conversa/shared';
 import { Alert, Badge, Spinner, useToast } from '@/components/ui';
 import { ApiError, api } from '@/lib/client';
+import { deviceKeepsLines, forgetDeviceLines, loadDeviceLines, saveDeviceLines, setDeviceKeepsLines } from '@/lib/cafe-device';
 import { useWorldPeer } from '@/lib/world-peer';
 
-type Msg = { id: string; mine: boolean; text: string; language: string; translation: string | null; translationLang: string | null; flagged: boolean; createdAt: string };
+type Msg = { id: string; seq?: number; mine: boolean; text: string; language: string; translation: string | null; translationLang: string | null; flagged: boolean; createdAt: string };
 type Conv = {
   id: string;
   status: string;
@@ -15,7 +16,7 @@ type Conv = {
   remainingMs: number;
   offerer: boolean;
   ice: { iceServers: { urls: string; username?: string; credential?: string }[]; turnConfigured: boolean };
-  peer: { id: string; name: string; city: string; country: string; languageLabel: string; portraitUrl: string | null } | null;
+  peer: { id: string; name: string; city: string; country: string; languageLabel: string; portraitUrl: string | null; guest?: boolean } | null;
   prompt: { id: string; title: string; question: string } | null;
 };
 
@@ -44,7 +45,10 @@ export default function WorldChat() {
   const sendPeerRef = useRef<(data: unknown) => void>(() => {});
   const busyRef = useRef(false);
   const lastSendAt = useRef(0);
+  const pendingRelease = useRef<{ id: string; timer: number } | null>(null);
+  const greeted = useRef('');
   const [keyboard, setKeyboard] = useState(0);
+  const [keep, setKeep] = useState(false);
 
   const onRemote = useCallback((data: unknown) => {
     const m = data as Msg;
@@ -53,31 +57,100 @@ export default function WorldChat() {
   }, []);
 
   const ended = conv?.status !== 'ACTIVE' || left <= 0;
-  const { status: peer, send: sendPeer } = useWorldPeer(id, conv?.offerer, conv?.ice, !!conv && !ended, onRemote);
+  const guestHour = !!conv?.peer?.guest && conv.id === id;
+  const { status: peer, send: sendPeer } = useWorldPeer(id, conv?.offerer, conv?.ice, !!conv && !ended && !guestHour, onRemote);
   sendPeerRef.current = sendPeer;
   msgsRef.current = msgs;
 
   async function refresh() {
-    const r = await api(`/api/world/conversations/${id}`);
+    const r = await api(`/api/world/conversations/${id}?messages=0`);
     setConv(r.conversation);
     setLeft(r.conversation.remainingMs);
-    if (Array.isArray(r.messages)) {
-      setMsgs((prev) => {
-        const server = r.messages as Msg[];
-        const seen = new Set(server.map((m) => m.id));
-        const pending = prev.filter((m) => m.id.startsWith('local_') && !seen.has(m.id));
-        const extras = prev.filter((m) => !m.id.startsWith('local_') && !seen.has(m.id));
-        return [...server, ...extras, ...pending].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-      });
-    }
   }
 
   useEffect(() => {
+    setKeep(deviceKeepsLines());
+    const saved = loadDeviceLines(id);
+    msgsRef.current = saved;
+    setMsgs(saved);
+    greeted.current = '';
+  }, [id]);
+
+  useEffect(() => {
+    if (keep) saveDeviceLines(id, msgs);
+  }, [keep, id, msgs]);
+
+  useEffect(() => {
     refresh().catch((e) => setError(e.message));
-    const t = setInterval(() => refresh().catch(() => {}), 4000);
+    const t = setInterval(() => refresh().catch(() => {}), peer === 'open' ? 8000 : 4000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, peer]);
+
+  useEffect(() => {
+    if (!guestHour || ended || greeted.current === id) return;
+    if (msgsRef.current.some((m) => !m.id.startsWith('local_'))) {
+      greeted.current = id;
+      return;
+    }
+    greeted.current = id;
+    api(`/api/world/conversations/${id}/guest`, { body: { history: [] } })
+      .then((r) => {
+        const message = r.message as Msg;
+        setMsgs((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
+      })
+      .catch(() => {
+        if (greeted.current === id) greeted.current = '';
+      });
+  }, [guestHour, id, ended]);
+
+  useEffect(() => {
+    if (!id || ended) return;
+    const hourId = id;
+    if (pendingRelease.current?.id === hourId) {
+      window.clearTimeout(pendingRelease.current.timer);
+      pendingRelease.current = null;
+    }
+    let closed = false;
+    const beat = () => {
+      if (closed) return;
+      const phase = guestHour || peer === 'open' ? 'open' : 'connecting';
+      api(`/api/world/conversations/${hourId}/link`, { body: { phase } }).catch(() => {});
+    };
+    const release = () => {
+      if (closed) return;
+      closed = true;
+      fetch(`/api/world/conversations/${hourId}/link`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ release: true }),
+        credentials: 'same-origin',
+        keepalive: true,
+      }).catch(() => {});
+    };
+    beat();
+    const t = window.setInterval(beat, 20_000);
+    window.addEventListener('pagehide', release);
+    return () => {
+      window.clearInterval(t);
+      window.removeEventListener('pagehide', release);
+      const timer = window.setTimeout(() => {
+        if (pendingRelease.current?.timer === timer) pendingRelease.current = null;
+        if (!closed) {
+          release();
+          forgetDeviceLines(hourId);
+          fetch(`/api/world/conversations/${hourId}/end`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: '{}',
+            credentials: 'same-origin',
+            keepalive: true,
+          }).catch(() => {});
+        }
+      }, 1500);
+      pendingRelease.current = { id: hourId, timer };
+    };
+  }, [id, ended, peer, guestHour]);
 
   useEffect(() => {
     const t = setInterval(() => setLeft((ms) => Math.max(0, ms - 1000)), 1000);
@@ -101,18 +174,42 @@ export default function WorldChat() {
     };
   }, []);
 
+  function toggleKeep() {
+    const next = !keep;
+    setDeviceKeepsLines(next);
+    setKeep(next);
+    if (next) saveDeviceLines(id, msgsRef.current);
+  }
+
   async function ship(raw: string, replaceId?: string) {
     const r = await api(`/api/world/conversations/${id}/prepare`, { body: { text: raw } });
+    const mine = { ...r.message, mine: true as const };
+    const place = (list: Msg[]) => {
+      const without = replaceId ? list.filter((x) => x.id !== replaceId && x.id !== mine.id) : list.filter((x) => x.id !== mine.id);
+      return [...without, mine];
+    };
+    if (guestHour) {
+      const history = place(msgsRef.current)
+        .filter((m) => !m.id.startsWith('local_'))
+        .slice(-12)
+        .map((m) => ({
+          mine: m.mine,
+          text: m.text.slice(0, 500),
+          translation: (m.translation || '').slice(0, 500),
+        }));
+      const reply = await api(`/api/world/conversations/${id}/guest`, { body: { history } });
+      setMsgs((m) => {
+        const next = place(m);
+        return next.some((x) => x.id === reply.message.id) ? next : [...next, reply.message];
+      });
+      return;
+    }
     try {
       sendPeerRef.current({ ...r.message, mine: false });
     } catch {
-      /* The hour keeps the line, so it still arrives. */
+      throw new Error('The live link is not open yet. Wait a moment, then send again.');
     }
-    const mine = { ...r.message, mine: true as const };
-    setMsgs((m) => {
-      const without = replaceId ? m.filter((x) => x.id !== replaceId && x.id !== mine.id) : m.filter((x) => x.id !== mine.id);
-      return [...without, mine];
-    });
+    setMsgs((m) => place(m));
   }
 
   async function send() {
@@ -252,7 +349,7 @@ export default function WorldChat() {
   const waitFor = last && !last.mine && !last.id.startsWith('local_') ? last.id : '';
 
   useEffect(() => {
-    if (!auto || ended || !waitFor || waitFor === lastHandled.current || assistRef.current) {
+    if (guestHour || !auto || ended || !waitFor || waitFor === lastHandled.current || assistRef.current) {
       if (!assistRef.current) setReading(false);
       return;
     }
@@ -280,19 +377,19 @@ export default function WorldChat() {
     }, 15_000);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auto, ended, waitFor, busy, nudge]);
+  }, [auto, ended, waitFor, busy, nudge, guestHour]);
 
   async function startAuto() {
-    if (!confirm('Cultural Café will keep answering for this hour. The other person will be told you are using help. You can turn it off any time. Continue?')) return;
+    if (!confirm('Cultural Café will keep answering at this table. The other person will be told you are using help. You can turn it off any time. Continue?')) return;
     rememberAuto(true);
-    show('Answering is on for this hour. A reply goes out shortly after they write.');
+    show('Answering is on at this table. A reply goes out shortly after they write.');
   }
 
   async function end() {
     rememberAuto(false);
+    forgetDeviceLines(id);
     await api(`/api/world/conversations/${id}/end`, { body: {} });
-    show('Hour ended');
-    await refresh();
+    router.push('/app/world');
   }
 
   async function block() {
@@ -322,13 +419,13 @@ export default function WorldChat() {
       <button className="btn-primary text-xs" disabled={busy} onClick={() => assist(false)}>
         {drafting ? 'Writing…' : 'Suggest a reply'}
       </button>
-      {auto ? (
+      {!guestHour && (auto ? (
         <button className="btn-secondary text-xs" onClick={() => { rememberAuto(false); show('Answering off — you are writing again.'); }}>Stop automatic answering</button>
       ) : (
         <button className="btn-secondary text-xs" disabled={busy} onClick={startAuto}>
           Answer automatically
         </button>
-      )}
+      ))}
     </div>
   );
 
@@ -344,15 +441,19 @@ export default function WorldChat() {
         <div className="min-w-0">
           <h1 className="truncate text-2xl font-bold tracking-tight text-white">{conv?.peer ? peerName : 'Café chat'}</h1>
           <p className="mt-0.5 text-sm text-ink-300">
-            {conv?.peer ? (where || 'Somewhere') : 'Loading…'}
+            {conv?.peer ? `${guestHour ? 'Café guest · ' : ''}${where || 'Somewhere'}` : 'Loading…'}
           </p>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={ended ? 'amber' : 'green'}>{ended ? 'Ended' : `${mins}:${String(secs).padStart(2, '0')} left`}</Badge>
-        {!ended && <button className="btn-secondary px-3 py-1.5 text-xs" onClick={end}>End hour</button>}
+        {guestHour && <Badge>Guest</Badge>}
+        {!ended && <button className="btn-secondary px-3 py-1.5 text-xs" onClick={end}>Leave the table</button>}
         <button className="btn-ghost px-2 py-1 text-xs" onClick={block}>Block</button>
         <button className="btn-ghost px-2 py-1 text-xs" onClick={report}>Report</button>
+        <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={toggleKeep}>
+          {keep ? 'Saved on this device' : 'Keep on this device'}
+        </button>
       </div>
       {conv?.prompt && (
         <div className="rounded-2xl border border-brand-500/30 bg-brand-500/5 px-3 py-2">
@@ -371,7 +472,7 @@ export default function WorldChat() {
       )}
       {answerButtons}
 
-      <div className="card min-h-[8rem] flex-1 space-y-3 overflow-y-auto p-3" data-world-thread>
+      <div className="card min-h-[8rem] flex-1 space-y-3 overflow-y-auto p-3" data-world-thread data-world-peer={guestHour ? 'open' : peer}>
         {msgs.length === 0 && (
           <p className="text-sm text-ink-400">
             Write in your language. {peerName}&apos;s answer shows here in your language.
@@ -392,7 +493,7 @@ export default function WorldChat() {
       </div>
 
       {ended ? (
-        <p className="text-sm text-ink-400">This hour is over. <a className="text-brand-300" href="/app/world">Back to the Café</a></p>
+        <p className="text-sm text-ink-400">This table has closed. <a className="text-brand-300" href="/app/world">Back to the Café</a></p>
       ) : (
         <div className="relative z-10 space-y-2 bg-ink-900/95">
           {error && <Alert kind="error">{error}</Alert>}
@@ -424,7 +525,9 @@ export default function WorldChat() {
               {sending ? 'Sending…' : 'Send'}
             </button>
           </div>
-          <p className="text-xs text-ink-400">{peerName} reads a translation. You read theirs in your language.</p>
+          <p className="text-xs text-ink-400">
+            {peerName} reads a translation. {keep ? 'This table stays on this device.' : 'Nothing is saved unless you tap Keep on this device.'}
+          </p>
         </div>
       )}
       {toast}

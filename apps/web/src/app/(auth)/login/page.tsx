@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Field } from '@/components/ui';
 import { api } from '@/lib/client';
 
@@ -10,6 +10,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [registerHref, setRegisterHref] = useState('/register');
+
+  useEffect(() => {
+    const next = new URLSearchParams(window.location.search).get('next') || '';
+    const m = /^\/join\/([a-z2-9]+)$/.exec(next);
+    if (m) setRegisterHref(`/register?from=${m[1]}`);
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -37,7 +44,7 @@ export default function LoginPage() {
       </Field>
       <button className="btn-primary w-full" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
       <p className="text-center text-sm text-ink-300">
-        New here? <Link className="text-brand-300 hover:underline" href="/register">Create an account</Link>
+        New here? <Link className="text-brand-300 hover:underline" href={registerHref}>Create an account</Link>
       </p>
     </form>
   );

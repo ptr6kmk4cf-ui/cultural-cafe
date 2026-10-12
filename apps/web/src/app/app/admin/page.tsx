@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Alert, Badge, PageHeader, Spinner } from '@/components/ui';
 import { api } from '@/lib/client';
 
@@ -15,7 +16,11 @@ export default function Admin() {
   if (!d) return <Spinner />;
   return (
     <div className="space-y-6">
-      <PageHeader title="Admin" subtitle="Aggregate metrics only — admins cannot read users' conversations, memories or photos." />
+      <PageHeader
+        title="Admin"
+        subtitle="Aggregate metrics only — admins cannot read users' conversations, memories or photos."
+        actions={<Link href="/app/admin/links" className="btn-secondary text-xs">Live links</Link>}
+      />
       <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
         {[
           ['Users', d.users],

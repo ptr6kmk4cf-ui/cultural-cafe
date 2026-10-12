@@ -455,7 +455,7 @@ const WorldReplySchema = z.object({
 });
 
 export const WORLD_AI_DISCLOSURE =
-  "I'm using Cultural Café to help me write this hour — still a real person, just with help.";
+  "I'm using Cultural Café to help me write at this table — still a real person, just with help.";
 
 export async function generateWorldReply(opts: {
   user: AuthUser;
@@ -473,7 +473,7 @@ export async function generateWorldReply(opts: {
   const mustHold =
     !!(latest && (detectSensitiveRequest(latest) || detectStopRequest(latest) || looksLikeInjection(latest)));
 
-  const system = `You draft ONE message for a Cultural Café user in a one-hour café chat with a stranger from another place. This is cultural exchange, not dating. The user sends it under their own name${opts.auto ? ' (automatic answering is on: keep the conversation going for the whole hour)' : ''}.
+  const system = `You draft ONE message for a Cultural Café user at a café table with a stranger from another place. This is cultural exchange, not dating. The user sends it under their own name${opts.auto ? ' (automatic answering is on: keep the conversation going until the table closes)' : ''}.
 
 ${SAFETY_RULES}
 
@@ -515,7 +515,7 @@ Peer first name: ${opts.peerName || 'them'}. They said they are in: ${opts.peerC
     holdReason: mustHold
       ? detectStopRequest(latest)
         ? 'They asked to stop. Take over and say goodbye yourself.'
-        : 'This looks like money, private details, or an attempt to hijack the assistant. You should answer yourself or end the hour.'
+        : 'This looks like money, private details, or an attempt to hijack the assistant. You should answer yourself or leave the table.'
       : data.holdReason ?? (hold ? 'The draft was held back. Write this one yourself.' : null),
     mock,
   };

@@ -6,13 +6,13 @@ import { getCurrentUser } from '@/lib/auth';
 
 const SHOWCASE = ['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'ar', 'ru', 'tr', 'pl', 'zh', 'ja', 'ko', 'hi', 'he', 'uk', 'vi', 'th', 'id'];
 
-const LINE = 'For one hour you write to an adult in another country, in your own language.';
+const LINE = 'Take a table with an adult in another country. You write in your own language.';
 
 const FEATURES = [
-  { t: 'One hour, then it ends', d: 'A timed text chat. You get a starting question — a Sunday, a market, a food from their town. You can leave sooner.' },
+  { t: 'A table, then it closes', d: 'A timed text chat. You get a starting question — a Sunday, a market, a food from their town. You can leave sooner.' },
   { t: 'Live translation', d: 'You type as you speak. They see it in their language. One tap shows the original if a line feels off.' },
   { t: 'Someone in another country', d: 'A first name, a city they typed, maybe a photo. Both of you tap accept before the first message.' },
-  { t: 'Not dating', d: 'Adults 18+ only. No phone numbers or emails. Lines stay for this hour so you can both read them, then they are deleted.' },
+  { t: 'Not dating', d: 'Adults 18+ only. No phone numbers or emails. Lines stay for this table so you can both read them, then they are deleted.' },
 ];
 
 export default async function Landing() {

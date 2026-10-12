@@ -1,6 +1,6 @@
 import { mockComplete } from './mock';
 
-export type AiTask = 'opener' | 'reply' | 'translate' | 'match' | 'photo_observe' | 'photo_caption' | 'world_reply';
+export type AiTask = 'opener' | 'reply' | 'translate' | 'match' | 'photo_observe' | 'photo_caption' | 'world_reply' | 'cafe_guest';
 
 export type AiPart =
   | { type: 'text'; text: string }

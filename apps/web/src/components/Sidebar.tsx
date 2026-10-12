@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const NAV = [
   { href: '/app', label: 'Home', icon: '⌂' },
-  { href: '/app/world', label: 'Café', icon: '☕' },
-  { href: '/app/conversations', label: 'Hours', icon: '✉' },
+  { href: '/app/world#profile', label: 'Your profile', icon: '☺' },
+  { href: '/app/world#meet', label: 'Meet someone', icon: '☕' },
+  { href: '/app/conversations', label: 'Past contacts', icon: '✉' },
   { href: '/app/languages', label: 'Language', icon: '文' },
   { href: '/app/photos', label: 'Photo', icon: '▣' },
   { href: '/app/privacy', label: 'Account', icon: '⚿' },
@@ -16,8 +17,24 @@ const NAV = [
 export function Sidebar({ user }: { user: { name: string; email: string; plan: string; role: string } }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
-  const active = (href: string) => (href === '/app' ? path === '/app' : path.startsWith(href));
-  const current = NAV.find((n) => active(n.href))?.label ?? (active('/app/admin') ? 'Admin' : 'Cultural Café');
+  const [hash, setHash] = useState('');
+  useEffect(() => {
+    const read = () => setHash(window.location.hash);
+    read();
+    window.addEventListener('hashchange', read);
+    return () => window.removeEventListener('hashchange', read);
+  }, [path]);
+  const active = (href: string) => {
+    const [base, fragment] = href.split('#');
+    if (fragment === 'profile') return path === base && (hash === '#profile' || hash === '');
+    if (fragment) return path === base && hash === `#${fragment}`;
+    return href === '/app' ? path === '/app' : path.startsWith(href);
+  };
+  const current = path.startsWith('/app/admin/links')
+    ? 'Live links'
+    : path.startsWith('/app/world/')
+      ? 'Café'
+      : (NAV.find((n) => active(n.href))?.label ?? (path.startsWith('/app/admin') ? 'Admin' : 'Cultural Café'));
 
   return (
     <>
@@ -41,7 +58,19 @@ export function Sidebar({ user }: { user: { name: string; email: string; plan: s
             <Link
               key={n.href}
               href={n.href}
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                setOpen(false);
+                const [base, fragment] = n.href.split('#');
+                if (!fragment) return;
+                setHash(`#${fragment}`);
+                if (window.location.pathname === base) {
+                  const el = document.getElementById(fragment);
+                  if (el) {
+                    const top = el.getBoundingClientRect().top + window.scrollY - 96;
+                    window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+                  }
+                }
+              }}
               className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition md:py-2 ${active(n.href) ? 'bg-gradient-to-r from-brand-500/20 to-amber-700/10 text-white' : 'text-ink-300 hover:bg-white/5 hover:text-white'}`}
             >
               <span className="w-4 text-center text-xs opacity-80">{n.icon}</span>
@@ -49,9 +78,14 @@ export function Sidebar({ user }: { user: { name: string; email: string; plan: s
             </Link>
           ))}
           {user.role === 'ADMIN' && (
-            <Link href="/app/admin" onClick={() => setOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm md:py-2 ${active('/app/admin') ? 'bg-white/10 text-white' : 'text-ink-300 hover:bg-white/5'}`}>
-              <span className="w-4 text-center text-xs">⚙</span>Admin
-            </Link>
+            <>
+              <Link href="/app/admin" onClick={() => setOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm md:py-2 ${path === '/app/admin' ? 'bg-white/10 text-white' : 'text-ink-300 hover:bg-white/5'}`}>
+                <span className="w-4 text-center text-xs">⚙</span>Admin
+              </Link>
+              <Link href="/app/admin/links" onClick={() => setOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm md:py-2 ${active('/app/admin/links') ? 'bg-white/10 text-white' : 'text-ink-300 hover:bg-white/5'}`}>
+                <span className="w-4 text-center text-xs">↔</span>Live links
+              </Link>
+            </>
           )}
         </nav>
         <div className="mt-3 rounded-xl border border-white/5 bg-white/5 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-xs">

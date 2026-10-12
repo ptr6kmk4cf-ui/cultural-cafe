@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     id: '/app',
     name: 'Cultural Café',
     short_name: 'Cultural Café',
-    description: 'For one hour you write to an adult in another country, in your own language. They read a live translation.',
+    description: 'Take a table with an adult in another country. You write in your own language. They read a live translation.',
     start_url: '/app',
     scope: '/',
     display: 'standalone',

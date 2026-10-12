@@ -13,17 +13,17 @@ export default function Privacy() {
       <ul className="list-disc space-y-1 pl-5">
         <li>Account data: email, name, date of birth (to confirm you are 18+), hashed password.</li>
         <li>Your café card: city, country, a few words, optional photo, language.</li>
-        <li>The lines of a café hour, deleted when the hour ends. Also who met, when, and the table topic.</li>
+        <li>Who met, when, and the table topic. Not the lines you wrote.</li>
         <li>Photos you upload, with location and other metadata removed.</li>
       </ul>
       <h2 className="text-lg font-semibold text-white">What we never do</h2>
       <ul className="list-disc space-y-1 pl-5">
-        <li>Keep the chat text after the hour ends. Lines are deleted when the hour ends.</li>
+        <li>Keep café chat text or files you send each other. That stays on your device only if you choose it.</li>
         <li>Sell personal data, or use your conversations to train models.</li>
         <li>Infer sensitive characteristics from your card or photos.</li>
       </ul>
       <h2 className="text-lg font-semibold text-white">Third parties</h2>
-      <p>Lines you send are translated by the AI Gateway on your Neon project. They stay for this hour so both of you can read them, then they are deleted.</p>
+      <p>A line is sent to the translator when you tap Send, then it goes to the other person’s phone. We do not keep a copy.</p>
       <h2 className="text-lg font-semibold text-white">Your rights</h2>
       <p>You can export and delete your account at any time from Account.</p>
       <h2 className="text-lg font-semibold text-white">People you talk to</h2>

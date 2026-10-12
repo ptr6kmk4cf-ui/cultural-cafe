@@ -19,7 +19,7 @@ export const POST = route(async (req) => {
   const user = await db.user.findUnique({ where: { email: body.email } });
   dummyHash ??= hashPassword('conversa-timing-equaliser');
   const ok = await verifyPassword(body.password, user?.passwordHash ?? (await dummyHash));
-  if (!user || !ok) throw new HttpError(401, 'Incorrect email or password', 'bad_credentials');
+  if (!user || user.synthetic || !ok) throw new HttpError(401, 'Incorrect email or password', 'bad_credentials');
   const { token, maxAge } = await createSession(user.id, 'WEB');
   await setSessionCookie(token, maxAge);
   return json({ ok: true });

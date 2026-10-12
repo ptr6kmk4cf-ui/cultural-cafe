@@ -29,3 +29,17 @@ function hashId(id: string) {
 export function cafePromptFor(id: string): CafePrompt {
   return CAFE_PROMPTS[hashId(id) % CAFE_PROMPTS.length];
 }
+
+/** A topic someone typed, turned into a starting question. Not shown in the public list. */
+export function topicIdeaPrompt(id: string, text: string): CafePrompt {
+  const clean = text.trim().replace(/\s+/g, ' ');
+  const title = clean.length > 40 ? `${clean.slice(0, 39)}…` : clean;
+  const question = /[?？]\s*$/.test(clean) ? clean : `What is “${clean}” like where you live?`;
+  return { id: `idea:${id}`, title, question };
+}
+
+/** Built-in topics, then saved ones. The same conversation id keeps the same pick for a fixed pool. */
+export function cafePromptFromPool(conversationId: string, ideas: { id: string; text: string }[]): CafePrompt {
+  const pool = [...CAFE_PROMPTS, ...ideas.map((idea) => topicIdeaPrompt(idea.id, idea.text))];
+  return pool[hashId(conversationId) % pool.length];
+}

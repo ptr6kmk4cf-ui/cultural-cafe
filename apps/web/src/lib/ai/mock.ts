@@ -29,6 +29,8 @@ const PHRASES: Record<string, { hi: string; reply: string; follow: string; bye: 
   pt: { hi: 'Olá', reply: 'Parece ótimo!', follow: 'Conta-me mais?', bye: 'Obrigado por me dizeres, cuida-te!', q: 'O que te levou a' },
   nl: { hi: 'Hoi', reply: 'Dat klinkt geweldig!', follow: 'Vertel je meer?', bye: 'Bedankt dat je het zegt, het ga je goed!', q: 'Hoe ben je begonnen met' },
   ar: { hi: 'مرحبا', reply: 'يبدو ذلك رائعاً!', follow: 'هل تخبرني المزيد؟', bye: 'شكراً لإخباري، اعتنِ بنفسك!', q: 'ما الذي جذبك إلى' },
+  ja: { hi: 'こんにちは', reply: 'それはいいですね。', follow: 'もう少し聞かせてください。', bye: 'わかりました。気をつけて。', q: 'きっかけは' },
+  sw: { hi: 'Habari', reply: 'Hiyo ni nzuri.', follow: 'Niambie zaidi.', bye: 'Sawa. Jitunze.', q: 'Nini kilikufanya uanze' },
 };
 
 function targetLang(system: string, fallbackText: string): string {
@@ -96,6 +98,15 @@ export async function mockComplete(req: AiRequest): Promise<AiResult> {
       const src = between(text, 'text');
       const target = req.system.match(/into [^(]+\((\w\w)\)/)?.[1] ?? 'en';
       out = { translation: `[Mock translation to ${target}] ${src}`, detectedLanguage: detectLanguageHeuristic(src) };
+      break;
+    }
+    case 'cafe_guest': {
+      const latest = between(text, 'latest');
+      const stop = latest ? detectStopRequest(latest) : false;
+      const sensitive = latest ? /western union|money|iban/i.test(latest) : false;
+      const lang = (req.system.match(/Write ONLY in [^(]+\((\w\w)\)/) || [])[1] || 'en';
+      const p = PHRASES[lang] ?? PHRASES.en;
+      out = { text: stop || sensitive ? p.bye : latest ? `${p.reply} ${p.follow}` : p.hi };
       break;
     }
     case 'world_reply': {

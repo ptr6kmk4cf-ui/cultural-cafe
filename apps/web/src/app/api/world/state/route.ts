@@ -10,15 +10,19 @@ import {
   serializeConversation,
   serializeInvite,
   serializeProfile,
-  touchPresence,
+  touchPresenceIfStale,
+  tryOfferFriendHours,
 } from '@/lib/services/world';
+import { syncCafeGuests } from '@/lib/services/cafe-guests';
 
 export const GET = route(async (req) => {
   const user = await requireUser(req);
   await expireStale();
-  await touchPresence(user.id);
-  const [profile, conv, invites, used] = await Promise.all([
-    getOrCreateProfile(user.id),
+  await syncCafeGuests();
+  let profile = await getOrCreateProfile(user.id);
+  profile = await touchPresenceIfStale(profile);
+  if (profile.invitedByUserId) await tryOfferFriendHours(user.id);
+  const [conv, invites, used] = await Promise.all([
     activeConversation(user.id),
     pendingInvites(user.id),
     db.worldConversation.count({

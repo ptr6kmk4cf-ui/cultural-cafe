@@ -2,16 +2,24 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { api } from './client';
+import { icePayload, parseSignalBody, type IceInit } from './world-signal';
 
 export type PeerStatus = 'off' | 'connecting' | 'open' | 'failed';
 
 type IceCfg = { iceServers: { urls: string | string[]; username?: string; credential?: string }[] };
 type Signal = { id: string; type: string; payload: string; createdAt: string };
 
+const CONNECT_POLL_MS = 900;
+const OPEN_POLL_MS = 8_000;
+const ICE_FLUSH_MS = 80;
+const HANDSHAKE_MS = 12_000;
+const DISCONNECT_GRACE_MS = 4_000;
+const RESTART_MIN_AGE_MS = 1_500;
+
 /**
  * WebRTC data-channel between the two café browsers.
  * The server only exchanges SDP/ICE. Chat text never goes through it.
- * Each try is a fresh connection, and a failed try starts another on its own.
+ * Each try is a fresh connection. A dead try asks the other side for a new one.
  */
 export function useWorldPeer(
   conversationId: string | undefined,
@@ -38,19 +46,31 @@ export function useWorldPeer(
 
     let closed = false;
     let restarting = false;
-    let poll = 0;
-    let attemptTimer = 0;
+    let generation = 0;
+    let tries = 0;
+    let pollTimer = 0;
+    let handshakeTimer = 0;
+    let disconnectTimer = 0;
     let restartTimer = 0;
     let conn: RTCPeerConnection | null = null;
     let channel: RTCDataChannel | null = null;
+    let activeAttempt = '';
+    let iceFlushTimer = 0;
+    let bornAt = 0;
+    const usedAttempts = new Set<string>();
+    const seenSignals = new Set<string>();
 
-    let failTimer = 0;
+    const live = (next: RTCPeerConnection) => !closed && conn === next;
 
     const closeSockets = () => {
-      clearInterval(poll);
-      clearTimeout(attemptTimer);
-      clearTimeout(failTimer);
-      poll = 0;
+      clearTimeout(pollTimer);
+      clearTimeout(handshakeTimer);
+      clearTimeout(disconnectTimer);
+      clearTimeout(iceFlushTimer);
+      pollTimer = 0;
+      handshakeTimer = 0;
+      disconnectTimer = 0;
+      iceFlushTimer = 0;
       const oldChannel = channel;
       const oldConn = conn;
       channel = null;
@@ -61,73 +81,137 @@ export function useWorldPeer(
       if (pc.current === oldConn) pc.current = null;
     };
 
-    const restart = () => {
+    const post = (type: string, payload: string) =>
+      api(`/api/world/conversations/${conversationId}/signal`, { body: { type, payload } }).catch(() => null);
+
+    const restart = (fromAttempt?: string) => {
       if (closed || restarting) return;
-      if (channel?.readyState === 'open' || dc.current?.readyState === 'open') return;
       restarting = true;
+      if (fromAttempt) void post('restart', JSON.stringify({ attemptId: fromAttempt }));
       closeSockets();
       clearTimeout(restartTimer);
+      const wait = Math.min(4_000, 500 * 2 ** Math.min(tries, 3)) + Math.floor(Math.random() * 250);
+      tries += 1;
       restartTimer = window.setTimeout(() => {
         restarting = false;
         if (!closed) start();
-      }, 600);
+      }, wait);
     };
-
-    const post = (type: string, payload: string) =>
-      api(`/api/world/conversations/${conversationId}/signal`, { body: { type, payload } }).catch(() => {});
 
     const start = () => {
       if (closed) return;
+      const gen = ++generation;
       setStatus('connecting');
       const attemptId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-      const next = new RTCPeerConnection({ iceServers: iceNow.iceServers });
+      const born = Date.now();
+      bornAt = born;
+      const next = new RTCPeerConnection({
+        iceServers: iceNow.iceServers,
+        iceCandidatePoolSize: 4,
+        bundlePolicy: 'max-bundle',
+      });
       conn = next;
       pc.current = next;
+      activeAttempt = attemptId;
       let remoteSet = false;
       let answeredOffer = '';
-      const pending: RTCIceCandidateInit[] = [];
-      const localIce: RTCIceCandidateInit[] = [];
+      let cursor = '';
+      let inflight = false;
+      const pending: IceInit[] = [];
+      const localIce: IceInit[] = [];
+      const iceBuf: IceInit[] = [];
 
-      const flushIce = async () => {
-        const queued = pending.splice(0);
-        for (const init of queued) {
-          try {
-            await next.addIceCandidate(init);
-          } catch {
-            /* candidate for a previous try */
+      const currentAttempt = () => (offerer ? attemptId : answeredOffer);
+
+      const flushIceBuf = () => {
+        iceFlushTimer = 0;
+        if (!live(next)) return;
+        const id = currentAttempt();
+        const batch = iceBuf.splice(0);
+        if (!batch.length) return;
+        if (!id) {
+          localIce.push(...batch);
+          return;
+        }
+        void post('ice', icePayload(id, batch));
+      };
+
+      const queueIce = (init: IceInit) => {
+        if (!init.candidate) return;
+        iceBuf.push(init);
+        if (!iceFlushTimer) iceFlushTimer = window.setTimeout(flushIceBuf, ICE_FLUSH_MS);
+      };
+
+      const flushLocalIce = () => {
+        const id = currentAttempt();
+        if (!id || !localIce.length) return;
+        void post('ice', icePayload(id, localIce.splice(0)));
+      };
+
+      const applyRemoteIce = async (candidates: IceInit[]) => {
+        for (const init of candidates) {
+          if (!remoteSet) pending.push(init);
+          else {
+            try {
+              await next.addIceCandidate(init);
+            } catch {
+              /* stale */
+            }
           }
         }
       };
 
-      const sendIce = (init: RTCIceCandidateInit) => {
-        const id = offerer ? attemptId : answeredOffer;
-        if (!id) {
-          localIce.push(init);
-          return;
-        }
-        post('ice', JSON.stringify({ attemptId: id, candidate: init }));
+      const flushPendingIce = async () => {
+        const queued = pending.splice(0);
+        await applyRemoteIce(queued);
       };
 
-      const flushLocalIce = () => {
-        const id = offerer ? attemptId : answeredOffer;
-        if (!id) return;
-        for (const init of localIce.splice(0)) post('ice', JSON.stringify({ attemptId: id, candidate: init }));
+      const iceAlive = () => {
+        const iceState = next.iceConnectionState;
+        const connState = next.connectionState;
+        return (
+          iceState === 'checking' ||
+          iceState === 'connected' ||
+          iceState === 'completed' ||
+          connState === 'connecting' ||
+          connState === 'connected'
+        );
+      };
+
+      const linkOpen = () => channel?.readyState === 'open' && iceAlive();
+
+      let pollOnce = async () => {};
+      const schedulePoll = (ms: number) => {
+        clearTimeout(pollTimer);
+        if (closed || conn !== next) return;
+        pollTimer = window.setTimeout(() => {
+          pollOnce()
+            .catch(() => {})
+            .finally(() => {
+              if (!live(next)) return;
+              schedulePoll(linkOpen() ? OPEN_POLL_MS : CONNECT_POLL_MS);
+            });
+        }, ms);
       };
 
       const attach = (ch: RTCDataChannel) => {
         channel = ch;
         dc.current = ch;
         ch.onopen = () => {
-          if (closed || conn !== next) return;
-          clearTimeout(attemptTimer);
-          clearTimeout(failTimer);
+          if (!live(next)) return;
+          tries = 0;
+          clearTimeout(handshakeTimer);
+          clearTimeout(disconnectTimer);
           setStatus('open');
+          const id = currentAttempt();
+          if (id) void post('state', JSON.stringify({ attemptId: id, phase: 'open' }));
+          schedulePoll(OPEN_POLL_MS);
         };
         ch.onclose = () => {
-          if (closed || conn !== next || restarting) return;
+          if (!live(next) || restarting) return;
           window.setTimeout(() => {
-            if (!closed && conn === next && ch.readyState !== 'open') restart();
-          }, 2500);
+            if (live(next) && ch.readyState !== 'open') restart(currentAttempt() || attemptId);
+          }, 1_500);
         };
         ch.onmessage = (ev) => {
           try {
@@ -138,126 +222,180 @@ export function useWorldPeer(
         };
       };
 
-      next.ondatachannel = (e) => {
-        if (conn === next) attach(e.channel);
-      };
-      next.oniceconnectionstatechange = () => {
-        if (closed || conn !== next) return;
-        const ice = next.iceConnectionState;
-        if (ice === 'connected' || ice === 'completed') {
-          clearTimeout(failTimer);
+      const onPathChange = () => {
+        if (!live(next)) return;
+        const iceState = next.iceConnectionState;
+        const connState = next.connectionState;
+        if (iceState === 'connected' || iceState === 'completed' || connState === 'connected') {
+          clearTimeout(disconnectTimer);
+          disconnectTimer = 0;
           return;
         }
-        if (ice !== 'failed') return;
-        clearTimeout(failTimer);
-        failTimer = window.setTimeout(() => {
-          if (closed || conn !== next) return;
-          if (next.iceConnectionState === 'failed' && channel?.readyState !== 'open') restart();
-        }, 8000);
+        const dead = iceState === 'failed' || connState === 'failed';
+        const dropped = iceState === 'disconnected' || connState === 'disconnected';
+        if (!dead && !dropped) return;
+        if (dead) {
+          clearTimeout(disconnectTimer);
+          disconnectTimer = 0;
+        }
+        if (!disconnectTimer) {
+          disconnectTimer = window.setTimeout(() => {
+            if (!live(next)) return;
+            if (channel?.readyState === 'open' && iceAlive()) return;
+            restart(currentAttempt() || attemptId);
+          }, dead ? 600 : DISCONNECT_GRACE_MS);
+        }
+        if (dropped) schedulePoll(CONNECT_POLL_MS);
       };
+
+      next.ondatachannel = (e) => {
+        if (live(next)) attach(e.channel);
+      };
+      next.oniceconnectionstatechange = onPathChange;
+      next.onconnectionstatechange = onPathChange;
       next.onicecandidate = (e) => {
-        if (!e.candidate || closed || conn !== next) return;
-        sendIce(e.candidate.toJSON());
+        if (!live(next) || !e.candidate) return;
+        queueIce(e.candidate.toJSON());
+      };
+      next.onicegatheringstatechange = () => {
+        if (next.iceGatheringState === 'complete') flushIceBuf();
       };
 
       if (offerer) {
+        usedAttempts.add(attemptId);
         attach(next.createDataChannel('world', { ordered: true }));
         next
           .createOffer()
           .then(async (offer) => {
-            if (closed || conn !== next) return;
+            if (!live(next) || gen !== generation) return;
             await next.setLocalDescription(offer);
-            await post('offer', JSON.stringify({ attemptId, description: offer }));
+            const ok = await post('offer', JSON.stringify({ attemptId, description: offer }));
+            if (!ok && live(next)) restart(attemptId);
           })
           .catch(() => {
-            if (conn === next) restart();
+            if (live(next)) restart(attemptId);
           });
       }
 
-      const pollOnce = async () => {
-        if (closed || conn !== next) return;
-        const since = new Date(Date.now() - 25_000).toISOString();
-        const r = await api<{ signals: Signal[] }>(
-          `/api/world/conversations/${conversationId}/signal?after=${encodeURIComponent(since)}`,
-        );
-        if (closed || conn !== next) return;
-        const parsed = r.signals.map((s) => ({ ...s, body: readBody(s.payload) }));
-
-        if (!offerer) {
-          const offers = parsed.filter((s) => s.type === 'offer' && s.body?.description?.type === 'offer');
-          const latest = offers[offers.length - 1];
-          const description = latest?.body?.description;
-          const offerIsNew = !!(latest?.body && description && latest.body.attemptId !== answeredOffer);
-          const keepCurrent =
-            channel?.readyState === 'open' ||
-            (!!answeredOffer && next.iceConnectionState !== 'failed' && next.iceConnectionState !== 'closed');
-          if (offerIsNew && !keepCurrent && latest?.body && description) {
-            if (answeredOffer) {
-              restart();
-              return;
-            }
-            answeredOffer = latest.body.attemptId;
-            flushLocalIce();
-            await next.setRemoteDescription(description);
-            remoteSet = true;
-            const answer = await next.createAnswer();
-            if (closed || conn !== next) return;
-            await next.setLocalDescription(answer);
-            await post('answer', JSON.stringify({ attemptId: answeredOffer, description: answer }));
-            await flushIce();
-          }
-        } else {
-          const answers = parsed.filter(
-            (s) => s.type === 'answer' && s.body?.attemptId === attemptId && s.body.description?.type === 'answer',
+      pollOnce = async () => {
+        if (!live(next) || inflight) return;
+        inflight = true;
+        try {
+          const q = new URLSearchParams();
+          if (cursor) q.set('after', cursor);
+          if (linkOpen()) q.set('live', '1');
+          const suffix = q.toString();
+          const r = await api<{ signals: Signal[]; cursor?: string; peer?: { attemptId: string; phase: string } | null }>(
+            `/api/world/conversations/${conversationId}/signal${suffix ? `?${suffix}` : ''}`,
           );
-          const latest = answers[answers.length - 1];
-          const description = latest?.body?.description;
-          if (latest?.body && description && !remoteSet) {
-            await next.setRemoteDescription(description);
-            remoteSet = true;
-            await flushIce();
-          }
-        }
-
-        for (const s of parsed) {
-          if (s.type !== 'ice' || !s.body?.candidate) continue;
-          const expected = offerer ? attemptId : answeredOffer;
-          if (!expected || s.body.attemptId !== expected) continue;
-          if (!remoteSet) pending.push(s.body.candidate);
-          else {
-            try {
-              await next.addIceCandidate(s.body.candidate);
-            } catch {
-              /* stale */
+          if (!live(next) || gen !== generation) return;
+          if (r.cursor) cursor = r.cursor;
+          const fresh: { id: string; type: string; createdAt: string; body: NonNullable<ReturnType<typeof parseSignalBody>> }[] = [];
+          for (const s of r.signals) {
+            if (seenSignals.has(s.id)) continue;
+            seenSignals.add(s.id);
+            if (seenSignals.size > 240) {
+              const first = seenSignals.values().next().value;
+              if (first) seenSignals.delete(first);
             }
+            const body = parseSignalBody(s.payload);
+            if (body) fresh.push({ ...s, body });
+            if (!r.cursor && s.createdAt > cursor) cursor = s.createdAt;
           }
-        }
-      };
 
-      poll = window.setInterval(() => {
-        pollOnce().catch(() => {});
-      }, 700);
-      pollOnce().catch(() => {});
-      let waits = 0;
-      const arm = () => {
-        attemptTimer = window.setTimeout(() => {
-          if (closed || conn !== next || channel?.readyState === 'open') return;
-          const ice = next.iceConnectionState;
-          const settling = ice === 'checking' || ice === 'connected' || ice === 'completed' || ice === 'disconnected';
-          if (settling && waits < 2) {
-            waits += 1;
-            arm();
+          const tooNewToRestart = Date.now() - born < RESTART_MIN_AGE_MS;
+          if (!linkOpen() && !tooNewToRestart && fresh.some((s) => s.type === 'restart')) {
+            restart(currentAttempt() || attemptId);
             return;
           }
-          restart();
-        }, 20_000);
+
+          if (!offerer) {
+            const offers = fresh.filter((s) => s.type === 'offer' && s.body.description?.type === 'offer' && !usedAttempts.has(s.body.attemptId));
+            const latest = offers.at(-1);
+            const description = latest?.body.description;
+            if (latest && description && !linkOpen()) {
+              if (answeredOffer) {
+                restart(answeredOffer);
+                return;
+              }
+              const offerAttempt = latest.body.attemptId;
+              try {
+                answeredOffer = offerAttempt;
+                activeAttempt = offerAttempt;
+                flushLocalIce();
+                flushIceBuf();
+                await next.setRemoteDescription(description as RTCSessionDescriptionInit);
+                remoteSet = true;
+                const answer = await next.createAnswer();
+                if (!live(next)) return;
+                await next.setLocalDescription(answer);
+                await post('answer', JSON.stringify({ attemptId: offerAttempt, description: answer }));
+                usedAttempts.add(offerAttempt);
+                await flushPendingIce();
+              } catch {
+                answeredOffer = '';
+                activeAttempt = attemptId;
+                remoteSet = false;
+                if (live(next)) restart(offerAttempt);
+              }
+            }
+          } else {
+            const answers = fresh.filter(
+              (s) => s.type === 'answer' && s.body.attemptId === attemptId && s.body.description?.type === 'answer',
+            );
+            const latest = answers.at(-1);
+            const description = latest?.body.description;
+            if (latest && description && !remoteSet) {
+              await next.setRemoteDescription(description as RTCSessionDescriptionInit);
+              remoteSet = true;
+              await flushPendingIce();
+            }
+          }
+
+          for (const s of fresh) {
+            if (s.type !== 'ice' || !s.body.candidates.length) continue;
+            const expected = currentAttempt();
+            if (!expected || s.body.attemptId !== expected) continue;
+            await applyRemoteIce(s.body.candidates);
+          }
+        } finally {
+          inflight = false;
+        }
       };
-      arm();
+
+      schedulePoll(0);
+      handshakeTimer = window.setTimeout(() => {
+        if (!live(next) || channel?.readyState === 'open') return;
+        if (iceAlive()) {
+          handshakeTimer = window.setTimeout(() => {
+            if (live(next) && channel?.readyState !== 'open') restart(currentAttempt() || attemptId);
+          }, 6_000);
+          return;
+        }
+        restart(currentAttempt() || attemptId);
+      }, HANDSHAKE_MS);
+    };
+
+    const onWake = () => {
+      if (closed || document.hidden) return;
+      const iceState = conn?.iceConnectionState;
+      const iceDead = iceState === 'failed' || iceState === 'disconnected' || iceState === 'closed';
+      if (channel?.readyState === 'open') {
+        if (iceDead) restart(activeAttempt || undefined);
+        return;
+      }
+      if (!iceDead && Date.now() - bornAt < HANDSHAKE_MS) return;
+      restart(activeAttempt || undefined);
     };
 
     start();
+    document.addEventListener('visibilitychange', onWake);
+    window.addEventListener('online', onWake);
     return () => {
       closed = true;
+      generation += 1;
+      document.removeEventListener('visibilitychange', onWake);
+      window.removeEventListener('online', onWake);
       clearTimeout(restartTimer);
       closeSockets();
     };
@@ -269,25 +407,4 @@ export function useWorldPeer(
   }
 
   return { status, send };
-}
-
-function readBody(payload: string): { attemptId: string; description?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit } | null {
-  try {
-    const data = JSON.parse(payload) as {
-      attemptId?: string;
-      description?: RTCSessionDescriptionInit;
-      candidate?: RTCIceCandidateInit;
-      type?: string;
-      sdp?: string;
-      candidateLine?: string;
-    };
-    if (data?.attemptId && (data.description || data.candidate)) {
-      return { attemptId: data.attemptId, description: data.description, candidate: data.candidate };
-    }
-    if (data?.type && data.sdp) return { attemptId: 'legacy', description: data as RTCSessionDescriptionInit };
-    if (data && 'candidate' in data && !data.attemptId) return { attemptId: 'legacy', candidate: data as RTCIceCandidateInit };
-    return null;
-  } catch {
-    return null;
-  }
 }

@@ -4,7 +4,7 @@ import { json, parseBody, route } from '@/lib/http';
 import { rateLimit } from '@/lib/rate-limit';
 import { prepareWorldMessage } from '@/lib/services/world';
 
-/** Translates a line, stores it until the hour ends, and returns it to the café chat. */
+/** Translates a line and returns it. Nothing is written to the database. */
 export const POST = route<{ id: string }>(async (req, { id }) => {
   const user = await requireUser(req);
   rateLimit(`world-msg:${user.id}`, 40, 60_000);

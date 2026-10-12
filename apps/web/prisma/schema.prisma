@@ -92,6 +92,7 @@ model User {
   termsAcceptedAt DateTime?
   role           Role      @default(USER)
   plan           Plan      @default(FREE)
+  synthetic      Boolean   @default(false) // café guest, not a real account
   stripeCustomerId String? @unique
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -111,6 +112,7 @@ model User {
   supportTickets SupportTicket[]
 
   worldProfile     WorldProfile?
+  worldInvited     WorldProfile[]      @relation("WorldInvitedBy")
   worldBlocksMade  WorldBlock[]        @relation("WorldBlocker")
   worldBlocksGot   WorldBlock[]        @relation("WorldBlocked")
   worldInvitesFrom WorldInvite[]       @relation("WorldInviteFrom")
@@ -119,6 +121,11 @@ model User {
   worldConvB       WorldConversation[] @relation("WorldConvB")
   worldMessages    WorldMessage[]
   worldReports     WorldReport[]       @relation("WorldReporter")
+  worldSignals     WorldSignal[]       @relation("WorldSignalFrom")
+  worldPeerLinks   WorldPeerLink[]     @relation("WorldPeerLink")
+  cafeTopicIdeas   CafeTopicIdea[]
+
+  @@index([synthetic])
 }
 
 model Session {
@@ -262,6 +269,7 @@ model MatchCandidate {
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, platform, externalId])
+  @@index([userId, status])
 }
 
 model Album {
@@ -349,6 +357,7 @@ model AutopilotEvent {
 enum WorldInviteKind {
   RANDOM
   BROWSE
+  FRIEND
 }
 
 enum WorldInviteStatus {
@@ -375,8 +384,16 @@ model WorldProfile {
   country         String   @default("")
   bio             String   @default("") // [enc]
   portraitPhotoId String?  @unique
+  inviteCode      String?  @unique
+  invitedByUserId String?
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invitedBy       User?    @relation("WorldInvitedBy", fields: [invitedByUserId], references: [id], onDelete: SetNull)
   portrait        Photo?   @relation(fields: [portraitPhotoId], references: [id], onDelete: SetNull)
+
+  @@index([optedIn, lastSeenAt])
+  @@index([available, lastSeenAt])
+  @@index([available, queuedAt])
+  @@index([invitedByUserId])
 }
 
 model WorldBlock {
@@ -407,6 +424,7 @@ model WorldInvite {
 
   @@index([toId, status])
   @@index([fromId, status])
+  @@index([status, expiresAt])
 }
 
 model WorldConversation {
@@ -416,20 +434,29 @@ model WorldConversation {
   status    WorldConversationStatus  @default(ACTIVE)
   startedAt DateTime                 @default(now())
   endsAt    DateTime
-  endedAt   DateTime?
-  endedById String?
-  userA     User                     @relation("WorldConvA", fields: [userAId], references: [id], onDelete: Restrict)
-  userB     User                     @relation("WorldConvB", fields: [userBId], references: [id], onDelete: Restrict)
-  messages  WorldMessage[]
+  endedAt        DateTime?
+  endedById      String?
+  nextMessageSeq Int                      @default(0)
+  promptTitle    String?
+  promptQuestion String?
+  userA          User                     @relation("WorldConvA", fields: [userAId], references: [id], onDelete: Restrict)
+  userB          User                     @relation("WorldConvB", fields: [userBId], references: [id], onDelete: Restrict)
+  messages       WorldMessage[]
+  signals        WorldSignal[]
+  links          WorldPeerLink[]
 
   @@index([userAId, status])
   @@index([userBId, status])
+  @@index([status, endsAt])
 }
 
+// Encrypted café lines. Kept only while the hour is active, then deleted.
 model WorldMessage {
   id              String            @id @default(cuid())
   conversationId  String
   senderId        String
+  seq             Int               @default(0)
+  clientKey       String?
   text            String            // [enc] original
   language        String
   translation     String?           // [enc] into the other person's language
@@ -439,19 +466,52 @@ model WorldMessage {
   conversation    WorldConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender          User              @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
+  @@unique([conversationId, senderId, clientKey])
+  @@index([conversationId, seq])
   @@index([conversationId, createdAt])
 }
 
-// WebRTC signalling only (SDP / ICE). Chat text never goes here.
+// WebRTC signalling only (SDP / ICE / restart). Chat text never goes here.
 model WorldSignal {
-  id             String   @id @default(cuid())
+  id             String            @id @default(cuid())
   conversationId String
   fromId         String
   type           String
+  attemptId      String            @default("")
   payload        String
-  createdAt      DateTime @default(now())
+  createdAt      DateTime          @default(now())
+  conversation   WorldConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  from           User              @relation("WorldSignalFrom", fields: [fromId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
+  @@index([conversationId, fromId, createdAt])
+  @@index([conversationId, type, createdAt])
+}
+
+// One row per person in the hour: the attempt they are on, and whether the link is up.
+model WorldPeerLink {
+  conversationId String
+  userId         String
+  attemptId      String            @default("")
+  phase          String            @default("connecting")
+  updatedAt      DateTime          @updatedAt
+  conversation   WorldConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User              @relation("WorldPeerLink", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([conversationId, updatedAt])
+}
+
+// Topics people typed. Not shown on the café page. A later table can be given one.
+model CafeTopicIdea {
+  id        String   @id @default(cuid())
+  userId    String
+  text      String
+  key       String   @unique
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
 }
 
 model WorldReport {

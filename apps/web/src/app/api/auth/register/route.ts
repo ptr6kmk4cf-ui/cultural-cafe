@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { ageFromBirthDate, createSession, hashPassword, setSessionCookie } from '@/lib/auth';
 import { HttpError, json, parseBody, route } from '@/lib/http';
 import { clientIp, rateLimit } from '@/lib/rate-limit';
+import { claimFriendInvite, newInviteCode, normalizeInviteCode } from '@/lib/services/world';
 
 const Body = z.object({
   email: z.string().trim().toLowerCase().email().max(200),
@@ -11,6 +12,7 @@ const Body = z.object({
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   confirmAdult: z.literal(true, { errorMap: () => ({ message: 'You must confirm you are 18 or older' }) }),
   acceptTerms: z.literal(true, { errorMap: () => ({ message: 'You must accept the terms and privacy policy' }) }),
+  inviteCode: z.string().trim().min(4).max(16).optional(),
 });
 
 export const POST = route(async (req) => {
@@ -37,9 +39,17 @@ export const POST = route(async (req) => {
       language: { create: {} },
       preferences: { create: {} },
       autopilot: { create: {} },
-      worldProfile: { create: {} },
+      worldProfile: { create: { inviteCode: newInviteCode() } },
     },
   });
+  const inviteCode = body.inviteCode ? normalizeInviteCode(body.inviteCode) : null;
+  if (inviteCode) {
+    try {
+      await claimFriendInvite(user.id, inviteCode);
+    } catch {
+      /* Invalid or blocked invite; the account is still created. */
+    }
+  }
   const { token, maxAge } = await createSession(user.id, 'WEB');
   await setSessionCookie(token, maxAge);
   return json({ ok: true, user: { id: user.id, email: user.email, name: user.name } }, 201);

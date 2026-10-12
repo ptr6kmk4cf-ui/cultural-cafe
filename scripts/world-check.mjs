@@ -65,25 +65,26 @@ const convId = r.data.conversation?.id;
 const demoState = await demo('/api/world/state');
 check('demo is now in that conversation', !!convId && demoState.data.conversation?.id === convId, convId || 'no conversation');
 
-console.log('\nServer does not carry chat');
+console.log('\nServer keeps the hour, browsers carry the live link');
 r = await demo(`/api/world/conversations/${convId}/messages`, { text: 'this must not be stored' });
 check('POST /messages is gone (410 p2p_only)', r.status === 410 && r.data.code === 'p2p_only', `${r.status} ${r.data.code}`);
 const listed = await demo(`/api/world/conversations/${convId}`);
-check('GET conversation returns no stored messages', listed.status === 200 && listed.data.messages?.length === 0, `${listed.data.messages?.length}`);
 check('conversation is marked WebRTC', listed.data.conversation?.transport === 'webrtc' || listed.data.transport === 'webrtc', listed.data.transport);
 
-console.log('\nTranslation stays on the server (not delivered)');
+console.log('\nTranslation is not kept on the server');
 r = await demo(`/api/world/conversations/${convId}/prepare`, { text: 'What does a normal Sunday look like where you live?' });
-check('prepare does not store the line', r.status === 200 && r.data.message?.stored === false, `status ${r.status}`);
+check('prepare returns a line and does not store it', r.status === 200 && !!r.data.message?.id && r.data.message?.stored !== true, `status ${r.status}`);
 const spanish = /[áéíóúñ¿¡]/i.test(r.data.message?.translation || '') || /domingo|vives/i.test(r.data.message?.translation || '');
 check('English is translated to Lucia’s Spanish', spanish, `"${(r.data.message?.translation || '').slice(0, 80)}"`);
 check('original English is still there for the P2P packet', r.data.message?.text?.includes('Sunday'));
+const kept = await demo(`/api/world/conversations/${convId}`);
+check('the server has no copy of the line', kept.status === 200 && (kept.data.messages?.length ?? 0) === 0, `${kept.data.messages?.length ?? 0}`);
 r = await lucia(`/api/world/conversations/${convId}/prepare`, { text: 'Los domingos voy al mercado y luego al cine con mi hermana.' });
 check('Spanish is translated to Demo’s English', /sunday|market|cinema|sister|movies/i.test(r.data.message?.translation || ''), `"${(r.data.message?.translation || '').slice(0, 80)}"`);
 
 console.log('\nSafety');
 r = await demo(`/api/world/conversations/${convId}/prepare`, { text: 'Can you send me $200 via Western Union?' });
-check('money ask is flagged without being stored', r.status === 200 && r.data.message?.flagged === true && r.data.message?.stored === false, `flagged=${r.data.message?.flagged}`);
+check('money ask is flagged', r.status === 200 && r.data.message?.flagged === true, `flagged=${r.data.message?.flagged}`);
 
 console.log('\nPaid AI writing');
 await lucia('/api/dev/plan', { plan: 'FREE' });
@@ -144,6 +145,49 @@ check('past World chats are listed', r.status === 200 && r.data.conversations?.s
 await lucia(`/api/world/conversations/${convId}/end`, {});
 const ended = await demo(`/api/world/conversations/${convId}`);
 check('either person can end the hour', ended.data.conversation?.status === 'ENDED', ended.data.conversation?.status);
+check('ending the hour leaves no lines on the server', (ended.data.messages?.length ?? 0) === 0, `${ended.data.messages?.length ?? 0}`);
+
+console.log('\nInvite a friend');
+await reset(demo);
+await reset(lucia);
+{
+  const st = await demo('/api/world/state');
+  const code = st.data.profile?.inviteCode;
+  check('café card has a share code', typeof code === 'string' && code.length === 8, code || 'missing');
+  const pub = await fetch(`${API}/api/world/join/${code}`, { headers: { origin: API } });
+  const pubData = await pub.json().catch(() => ({}));
+  check('join link is public and hides email', pub.status === 200 && !!pubData.host?.name && !JSON.stringify(pubData).includes('@'), `${pub.status} ${pubData.host?.name || pubData.error || ''}`);
+  const bad = await fetch(`${API}/api/world/join/nope`, { headers: { origin: API } });
+  check('unknown join code is 404', bad.status === 404, `${bad.status}`);
+  const friendEmail = `friend${Date.now()}@conversa.local`;
+  const reg = await fetch(`${API}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: API },
+    body: JSON.stringify({
+      name: 'Sam',
+      email: friendEmail,
+      password: 'friend-pass-10',
+      birthDate: '1990-01-15',
+      confirmAdult: true,
+      acceptTerms: true,
+      inviteCode: code,
+    }),
+  });
+  check('friend can register from the link', reg.status === 201, `${reg.status}`);
+  const friendCookie = reg.headers.get('set-cookie')?.split(';')[0];
+  const friend = call(friendCookie);
+  await friend('/api/dev/plan', { plan: 'PREMIUM' });
+  await demo('/api/world/profile', { optedIn: true, city: 'Paris', country: 'France' }, 'PUT');
+  await friend('/api/world/profile', { optedIn: true, city: 'Lisbon', country: 'Portugal' }, 'PUT');
+  const friendState = await friend('/api/world/state');
+  const friendInvite = (friendState.data.invites ?? []).find((i) => i.kind === 'FRIEND');
+  check(
+    'joining the Café offers the hour to that friend',
+    !!friendInvite && friendInvite.incoming && friendInvite.theyAccepted && !friendInvite.iAccepted,
+    friendInvite ? `${friendInvite.kind} incoming=${friendInvite.incoming}` : 'no invite',
+  );
+  if (friendInvite) await friend(`/api/world/invites/${friendInvite.id}`, { accept: false });
+}
 
 console.log('\nRandom queue');
 const yuki = call(await login('yuki@conversa.local', travelerPw));

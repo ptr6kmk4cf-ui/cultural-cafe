@@ -144,9 +144,20 @@ export async function syncThread(user: AuthUser, snap: ThreadSnapshot, opts: { c
       contact = await db.contact.findFirstOrThrow({ where: { userId: user.id, platform: snap.platform, externalId } });
     }
   }
-  const existing = await db.message.findMany({ where: { contactId: contact.id }, select: { id: true, externalId: true, direction: true, text: true } });
-  const known = new Set(existing.map((e) => e.externalId).filter(Boolean));
-  const unlinkedOut = existing.filter((e) => !e.externalId && e.direction === 'OUT').map((e) => ({ id: e.id, text: decrypt(e.text) }));
+  const [knownRows, unlinkedRows] = await Promise.all([
+    db.message.findMany({
+      where: { contactId: contact.id, externalId: { not: null } },
+      select: { externalId: true },
+    }),
+    db.message.findMany({
+      where: { contactId: contact.id, externalId: null, direction: 'OUT' },
+      select: { id: true, text: true },
+      orderBy: { sentAt: 'desc' },
+      take: 40,
+    }),
+  ]);
+  const known = new Set(knownRows.map((e) => e.externalId).filter(Boolean) as string[]);
+  const unlinkedOut = unlinkedRows.map((e) => ({ id: e.id, text: decrypt(e.text) }));
   let added = 0;
   for (const m of snap.messages.slice(-200)) {
     if (!m.externalId || known.has(m.externalId)) continue;

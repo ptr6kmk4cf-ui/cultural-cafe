@@ -4,7 +4,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Cultural Café',
-  description: 'For one hour you write to an adult in another country, in your own language. They read a live translation.',
+  description: 'Take a table with an adult in another country. You write in your own language. They read a live translation.',
   applicationName: 'Cultural Café',
   appleWebApp: { capable: true, title: 'Cultural Café', statusBarStyle: 'black-translucent' },
   icons: { apple: '/icons/apple-touch-icon.png' },

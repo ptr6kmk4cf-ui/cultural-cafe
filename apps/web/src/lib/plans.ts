@@ -49,7 +49,7 @@ export function assertWorldAutomation(userId: string, plan: Plan, kind: 'assist'
     throw new HttpError(
       402,
       kind === 'autopilot'
-        ? 'Running the whole hour is a Premium feature (€14.99/month). Upgrade to let Cultural Café write and send for you — the other person is always told.'
+        ? 'Running the whole table is a Premium feature (€14.99/month). Upgrade to let Cultural Café write and send for you — the other person is always told.'
         : 'AI-written Café replies are a Premium feature (€14.99/month). Upgrade to get a draft; you still press send.',
       'premium_required',
     );

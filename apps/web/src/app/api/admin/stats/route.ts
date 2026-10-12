@@ -11,9 +11,9 @@ export const GET = route(async (req) => {
   const day = new Date(Date.now() - 86400_000);
   const month = new Date(Date.now() - 30 * 86400_000);
   const [users, premium, newUsers, ai24h, aiByFeature, aiFailures, tickets, contacts, autopilot24h, worldActive, worldReports] = await Promise.all([
-    db.user.count(),
-    db.user.count({ where: { plan: 'PREMIUM' } }),
-    db.user.count({ where: { createdAt: { gte: month } } }),
+    db.user.count({ where: { synthetic: false } }),
+    db.user.count({ where: { plan: 'PREMIUM', synthetic: false } }),
+    db.user.count({ where: { createdAt: { gte: month }, synthetic: false } }),
     db.aiUsage.count({ where: { createdAt: { gte: day } } }),
     db.aiUsage.groupBy({ by: ['feature'], where: { createdAt: { gte: month } }, _count: true, _sum: { inputTokens: true, outputTokens: true } }),
     db.aiUsage.count({ where: { createdAt: { gte: day }, success: false } }),

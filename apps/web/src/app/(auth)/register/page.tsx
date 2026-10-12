@@ -1,24 +1,33 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Field } from '@/components/ui';
 import { api } from '@/lib/client';
 
 export default function RegisterPage() {
   const [f, setF] = useState({ name: '', email: '', password: '', birthDate: '', confirmAdult: false, acceptTerms: false });
+  const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
+
+  useEffect(() => {
+    const from = new URLSearchParams(window.location.search).get('from') || sessionStorage.getItem('cafe_invite') || '';
+    if (from) {
+      sessionStorage.setItem('cafe_invite', from);
+      setInviteCode(from);
+    }
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError('');
     try {
-      await api('/api/auth/register', { body: f });
-      window.location.href = '/app?welcome=1';
+      await api('/api/auth/register', { body: { ...f, inviteCode: inviteCode || undefined } });
+      window.location.href = inviteCode ? '/app/world?from=friend' : '/app?welcome=1';
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
@@ -28,6 +37,7 @@ export default function RegisterPage() {
   return (
     <form onSubmit={submit} className="space-y-4">
       <h1 className="text-xl font-bold text-white">Create your account</h1>
+      {inviteCode && <Alert kind="info">A friend invited you to the Café. After you join, you both still have to accept.</Alert>}
       {error && <Alert kind="error">{error}</Alert>}
       <Field label="First name">
         <input className="input" required maxLength={60} value={f.name} onChange={set('name')} />

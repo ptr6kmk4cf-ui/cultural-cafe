@@ -64,6 +64,15 @@ function appOrigin() {
   return new URL(process.env.APP_URL || (process.env.NODE_ENV === 'production' ? PRODUCTION_ORIGIN : 'http://localhost:3000')).origin;
 }
 
+function refererOrigin(referer: string | null) {
+  if (!referer) return null;
+  try {
+    return new URL(referer).origin;
+  } catch {
+    return null;
+  }
+}
+
 function allowedOrigins() {
   const origin = appOrigin();
   const allowed = new Set([origin]);
@@ -92,8 +101,8 @@ export async function requireUser(req: NextRequest): Promise<AuthUser> {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   if (!token) throw new HttpError(401, 'Not signed in', 'unauthenticated');
   if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-    const origin = req.headers.get('origin');
-    if (origin && !allowedOrigins().has(origin)) throw new HttpError(403, 'Cross-origin request blocked', 'csrf');
+    const origin = req.headers.get('origin') || refererOrigin(req.headers.get('referer'));
+    if (!origin || !allowedOrigins().has(origin)) throw new HttpError(403, 'Cross-origin request blocked', 'csrf');
   }
   const user = await userFromToken(token);
   if (!user) throw new HttpError(401, 'Session expired', 'unauthenticated');

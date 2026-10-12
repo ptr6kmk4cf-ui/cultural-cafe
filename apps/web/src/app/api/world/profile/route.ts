@@ -3,7 +3,7 @@ import { requireUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { encrypt } from '@/lib/crypto';
 import { json, parseBody, route, HttpError } from '@/lib/http';
-import { getOrCreateProfile, serializeProfile, touchPresence } from '@/lib/services/world';
+import { getOrCreateProfile, newInviteCode, serializeProfile, touchPresence, tryOfferFriendHours } from '@/lib/services/world';
 
 export const GET = route(async (req) => {
   const user = await requireUser(req);
@@ -41,11 +41,13 @@ export const PUT = route(async (req) => {
     data.available = false;
     data.queuedAt = null;
   }
-  const profile = await db.worldProfile.upsert({
+  await db.worldProfile.upsert({
     where: { userId: user.id },
     update: data,
-    create: { userId: user.id, ...data },
+    create: { userId: user.id, inviteCode: newInviteCode(), ...data },
   });
   if (b.available !== undefined) await touchPresence(user.id, b.available);
+  if (b.optedIn) await tryOfferFriendHours(user.id, { includeInvitees: true });
+  const profile = await getOrCreateProfile(user.id);
   return json({ profile: serializeProfile(profile) });
 });

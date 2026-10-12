@@ -4,12 +4,13 @@ import { json, parseBody, route } from '@/lib/http';
 import { rateLimit } from '@/lib/rate-limit';
 import { postSignal, pullSignals } from '@/lib/services/world';
 
-const TYPES = ['offer', 'answer', 'ice'] as const;
+const TYPES = ['offer', 'answer', 'ice', 'restart', 'state'] as const;
 
 export const GET = route<{ id: string }>(async (req, { id }) => {
   const user = await requireUser(req);
   const after = req.nextUrl.searchParams.get('after') ?? undefined;
-  return json({ signals: await pullSignals(user.id, id, after) });
+  const live = req.nextUrl.searchParams.get('live') === '1';
+  return json(await pullSignals(user.id, id, after, live));
 });
 
 export const POST = route<{ id: string }>(async (req, { id }) => {

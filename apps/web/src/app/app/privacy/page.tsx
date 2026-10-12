@@ -27,7 +27,7 @@ export default function PrivacyAccount() {
         <div className="card space-y-3">
           <h2 className="font-semibold text-white">Your data</h2>
           <ul className="list-disc space-y-1 pl-4 text-sm text-ink-300">
-            <li>Café chat text goes between your two browsers. We do not keep the words.</li>
+            <li>Café lines go between the two phones. We do not keep them. You can keep this table on your device if you want.</li>
             <li>Your account, café card and language settings are stored so you can come back.</li>
             <li>Photos are private, metadata-stripped, and only you can access them.</li>
           </ul>

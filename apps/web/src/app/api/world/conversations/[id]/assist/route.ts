@@ -6,7 +6,7 @@ import { loadPersona } from '@/lib/ai/persona';
 import { json, parseBody, route } from '@/lib/http';
 import { assertWorldAutomation } from '@/lib/plans';
 import { rateLimit } from '@/lib/rate-limit';
-import { cafePromptFor } from '@conversa/shared';
+import { tablePromptFor } from '@/lib/services/cafe-topics';
 import { requireParticipant, peerId, publicCard } from '@/lib/services/world';
 
 export const POST = route<{ id: string }>(async (req, { id }) => {
@@ -25,12 +25,11 @@ export const POST = route<{ id: string }>(async (req, { id }) => {
       auto: z.boolean().optional(),
     }),
   );
-  await requireParticipant(user.id, id);
   rateLimit(`world-assist:${user.id}`, 20, 60_000);
   await assertWorldAutomation(user.id, user.plan, b.auto ? 'autopilot' : 'assist');
   const conv = await requireParticipant(user.id, id);
   if (conv.status !== 'ACTIVE' || conv.endsAt < new Date()) {
-    return json({ error: 'This hour is over.', code: 'ended' }, 409);
+    return json({ error: 'This table has closed.', code: 'ended' }, 409);
   }
   const { persona, lang } = await loadPersona(user.id);
   const peer = await publicCard(await peerId(conv, user.id), user.id);
@@ -42,7 +41,7 @@ export const POST = route<{ id: string }>(async (req, { id }) => {
     peerName: peer?.name ?? '',
     peerCity: [peer?.city, peer?.country].filter(Boolean).join(', '),
     myCity: [mine?.city, mine?.country].filter(Boolean).join(', '),
-    prompt: cafePromptFor(conv.id).question,
+    prompt: (await tablePromptFor(conv)).question,
     history: b.history.slice(-24),
     auto: !!b.auto,
   });

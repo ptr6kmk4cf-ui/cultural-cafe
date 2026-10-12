@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { requireUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { json, parseBody, route, HttpError } from '@/lib/http';
-import { activeConversation, endConversation, leaveQueue } from '@/lib/services/world';
+import { activeConversation, endConversation, expireStale, leaveQueue } from '@/lib/services/world';
 
 export const POST = route(async (req) => {
   const user = await requireUser(req);
@@ -17,6 +17,7 @@ export const POST = route(async (req) => {
     where: { status: 'PENDING', OR: [{ fromId: user.id, toId: b.userId }, { fromId: b.userId, toId: user.id }] },
     data: { status: 'CANCELLED' },
   });
+  await expireStale();
   const conv = await activeConversation(user.id);
   if (conv && (conv.userAId === b.userId || conv.userBId === b.userId)) await endConversation(user.id, conv.id);
   await leaveQueue(user.id);
