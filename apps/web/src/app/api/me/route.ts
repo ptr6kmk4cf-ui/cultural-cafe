@@ -18,7 +18,11 @@ export const GET = route(async (req) => {
     user,
     limits: PLAN_LIMITS[user.plan],
     usage: { aiRequests24h: usedToday },
-    ai: { provider: cfg.provider, mock: cfg.isMock, configured: cfg.isMock || !!cfg.apiKey || cfg.provider === 'openai-compatible' },
+    ai: {
+      provider: cfg.provider,
+      mock: false,
+      configured: !cfg.isMock && !!cfg.apiKey && (cfg.provider === 'anthropic' || cfg.provider === 'openai-compatible'),
+    },
     autopilot: { enabled: ap.enabled, emergencyStop: ap.emergencyStop },
     language: { myLanguage: lang?.myLanguage ?? 'en' },
   });

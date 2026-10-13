@@ -33,7 +33,7 @@ Requirements: Node ≥ 20, macOS/Linux. No Docker needed (an embedded PostgreSQL
 npm install
 cp apps/web/.env.example apps/web/.env
 # set ENCRYPTION_KEY:  node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-# set AI_PROVIDER + AI_API_KEY (or AI_PROVIDER=mock for offline plumbing tests)
+# AI is hardcoded to Claude Sonnet. Set an Anthropic AI_API_KEY, or the Neon AI Gateway vars.
 
 npm run db:start      # embedded PostgreSQL on :5433 (keep running; data in .data/pg)
 npm run db:push       # create tables
@@ -74,14 +74,14 @@ The live origin is **https://culturalcafe.online**. The domain is at Porkbun and
    - `APP_URL=https://culturalcafe.online`
    - `DATABASE_URL` / `DIRECT_URL`
    - `ENCRYPTION_KEY` (32-byte base64)
-   - `AI_PROVIDER` and `AI_API_KEY` (or `mock` for a dry run)
+   - Anthropic `AI_API_KEY`, or `NEON_AI_GATEWAY_TOKEN` and `NEON_AI_GATEWAY_BASE_URL`. The model is Claude Sonnet and cannot be switched.
 3. In Vercel → Project → Domains, add `culturalcafe.online` and `www.culturalcafe.online`.
 4. In Porkbun DNS, remove the parking A records and add the records Vercel shows (usually an A record to `10.0.1.1` for the apex, and CNAME `www` → `cname.vercel-dns.com`).
 5. Run `prisma db push` against `DIRECT_URL` once, then open https://culturalcafe.online.
 
 ## Not done yet
 
-- Real AI untested — only the mock provider has been run.
+- Claude Sonnet is required. The offline mock and other models are refused.
 - No real dating platforms integrated (by design until authorised).
 - Privacy policy and terms are placeholders.
 - Hosted group cafés from the earlier research note are not built; this is still 1:1 café hours with a surprise match.

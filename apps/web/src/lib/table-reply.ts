@@ -24,7 +24,7 @@ export function contentWords(text: string): string[] {
     .filter((word) => word.length > 3 && !COMMON.has(word));
 }
 
-const STIFF = /\b(i am glad to hear|glad to hear that|you mentioned|thank you for telling|you said|as an ai|language model)\b/i;
+const STIFF = /\b(i am glad to hear|glad to hear that|you mentioned|thank you for telling|you said|as an ai|language model|the part i am answering)\b/i;
 
 /** A guest line can be shown when it is in the reader's language, answers the thread, and does not sound like a form. */
 export function guestLineUsable(text: string, humanLang: string, already: string[], sources: string[]): boolean {
@@ -56,27 +56,98 @@ export function lineWorthReading(lines: string[]): string {
   return '';
 }
 
-function shorten(text: string) {
-  const clean = text.replace(/\s+/g, ' ').replace(/^["“”']+|["“”']+$/g, '').trim();
-  return clean.length > 90 ? `${clean.slice(0, 87).trim()}…` : clean;
+function titled(word: string) {
+  return word ? word.charAt(0).toLocaleUpperCase() + word.slice(1) : '';
+}
+
+function topicName(topic: string) {
+  const quoted = topic.match(/[“"]([^”"]+)[”"]/);
+  if (quoted?.[1]) return quoted[1];
+  return titled(contentWords(topic)[0] ?? '');
+}
+
+const WEAK_WORDS = new Set(['something', 'actually', 'makes', 'until', 'deserve', 'legitimate', 'only', 'suggestion', 'really']);
+
+/** A few everyday words, with more than one way to answer so the line does not sound stamped. */
+const PICTURES: Record<string, string[]> = {
+  bakery: [
+    'I would let the bakery stop me too. A red light I still obey.',
+    'The bakery is a better reason to pause than the plan I had.',
+  ],
+  bike: [
+    'I get off the bike when I want something warm. Hunger beats the rest of the route.',
+    'The bike can wait. I stop when a warm place wins.',
+  ],
+  rain: [
+    'Rain pulls me toward the nearest warm door. I do not mind a longer line for that.',
+    'In the rain I pick the closer bakery and call it the plan.',
+  ],
+  light: [
+    'I still stop for the light. A warm place is the exception I allow.',
+    'The light I obey. Everything else can wait a minute.',
+  ],
+  brake: [
+    'A bakery as a brake makes sense to me. I am less flexible about the light.',
+  ],
+  bread: [
+    'Warm bread is enough to end the walk. I would stop there too.',
+  ],
+  seat: [
+    'A wet seat is a real reason to go inside. I would do the same.',
+  ],
+};
+
+function lineNumber(text: string, size: number) {
+  let n = 0;
+  for (const ch of text) n = (n + ch.charCodeAt(0)) % size;
+  return n;
+}
+
+function speakableWords(latest: string) {
+  const tokens = latest.replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
+  const words: string[] = [];
+  for (let index = 0; index < tokens.length; index++) {
+    const lower = tokens[index].toLowerCase();
+    if (lower.length <= 3 || COMMON.has(lower) || WEAK_WORDS.has(lower)) continue;
+    const proper = index > 0 && tokens[index][0] === tokens[index][0].toLocaleUpperCase();
+    if (proper) continue;
+    words.push(lower);
+  }
+  return words;
+}
+
+/** True when a draft quotes their line or pastes the table question again. */
+export function draftEchoes(text: string, latest: string, topic: string) {
+  if (STIFF.test(text)) return true;
+  const clean = text.replace(/\s+/g, ' ').trim().toLowerCase();
+  const said = latest.replace(/\s+/g, ' ').trim();
+  if (said.length >= 24 && clean.includes(said.slice(0, 40).toLowerCase())) return true;
+  const question = topic.replace(/\s+/g, ' ').trim().toLowerCase();
+  return question.length >= 16 && clean.includes(question);
 }
 
 /**
- * A sendable line that names what they said and the table question.
- * Used when a draft ignores both.
+ * A sendable line that answers what they just said.
+ * It does not quote them, and it does not reuse one stamped sentence.
  */
 export function replyAboutTheirLine(opts: { latest?: string; topic?: string; place?: string }): string {
   const latest = lineWorthReading([opts.latest ?? '']);
   const topic = (opts.topic ?? '').replace(/\s+/g, ' ').trim();
   const place = (opts.place ?? '').replace(/\s+/g, ' ').trim();
-  const snippet = latest ? shorten(latest) : '';
-  const where = place ? ` Where I live, in ${place},` : '';
-  if (snippet && topic) {
-    return `You said “${snippet}”.${where} I want to stay with that. ${topic}`;
+  const words = speakableWords(latest);
+  const word = words.find((item) => PICTURES[item]) ?? words[0] ?? '';
+  const pictures = PICTURES[word];
+  if (pictures) return pictures[lineNumber(latest, pictures.length)];
+  if (word) {
+    const home = place ? ` In ${place} that is enough of a reason.` : '';
+    const lines = [
+      `I would pause for the ${word} too.${home}`,
+      `The ${word} would change my afternoon.${home}`,
+      `I keep a soft spot for the ${word}.${home}`,
+    ];
+    return lines[lineNumber(latest, lines.length)];
   }
-  if (snippet) {
-    return `You said “${snippet}”.${where} that is the part I am answering. What is that like where you are?`;
-  }
-  if (topic) return topic;
+  const subject = topicName(topic);
+  if (subject) return place ? `I can tell you about ${subject} from ${place}.` : `I can tell you about ${subject}.`;
   return 'What is an ordinary day like where you are?';
 }

@@ -6,7 +6,7 @@ import { isRtl } from '@conversa/shared';
 import { Alert, Badge, Spinner, useToast } from '@/components/ui';
 import { ApiError, api } from '@/lib/client';
 import { deviceKeepsLines, forgetDeviceLines, loadDeviceLines, saveDeviceLines, setDeviceKeepsLines } from '@/lib/cafe-device';
-import { isClosingLine, lineWorthReading, replyAboutTheirLine } from '@/lib/table-reply';
+import { isClosingLine } from '@/lib/table-reply';
 import { useWorldPeer } from '@/lib/world-peer';
 
 type Msg = { id: string; seq?: number; mine: boolean; text: string; language: string; translation: string | null; translationLang: string | null; flagged: boolean; createdAt: string };
@@ -262,14 +262,6 @@ export default function WorldChat() {
     }
   }
 
-  function localDraft() {
-    const theirs = msgsRef.current.filter((m) => !m.mine).map((m) => visibleLine(m.translation || m.text));
-    return replyAboutTheirLine({
-      latest: lineWorthReading(theirs),
-      topic: conv?.prompt?.question ?? '',
-    });
-  }
-
   function showDraft(draft: string) {
     setText(draft);
     requestAnimationFrame(() => {
@@ -305,7 +297,12 @@ export default function WorldChat() {
         body: { history: modelHistory(), auto: autoSend },
       });
       if (!autoSend) {
-        showDraft((r.text || '').trim() || localDraft());
+        const drafted = (r.text || '').trim();
+        if (!drafted) {
+          setError('Claude Sonnet did not write a line. Try again.');
+          return;
+        }
+        showDraft(drafted);
         return;
       }
       const drafted = (r.text || '').trim();
@@ -334,12 +331,8 @@ export default function WorldChat() {
       if (handledId) lastHandled.current = handledId;
     } catch (e) {
       const err = e as ApiError;
-      if (!autoSend) {
-        showDraft(localDraft());
-        return;
-      }
       if (err.status === 409) rememberAuto(false);
-      setError(err.message);
+      setError(err.message || 'Claude Sonnet did not answer. Try again.');
       setNudge((n) => n + 1);
     } finally {
       assistRef.current = false;

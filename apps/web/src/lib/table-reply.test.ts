@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { guestLineUsable, isClosingLine, lineWorthReading, replyAboutTheirLine, replyReads } from './table-reply';
+import { draftEchoes, guestLineUsable, isClosingLine, lineWorthReading, replyAboutTheirLine, replyReads } from './table-reply';
 
 test('a stock thank-you does not count as reading the table', () => {
   const stock = 'Thank you for telling me that. What is a normal day like in Lyon, France?';
@@ -39,12 +39,21 @@ test('a stiff or wrong-language guest line is not shown', () => {
 });
 
 test('a real answer names what they just said', () => {
-  const draft = replyAboutTheirLine({
-    latest: 'Evenings smell like fresh bread from the bakery.',
-    topic: 'What is “Surfing” like where you live?',
+  const latest = 'Evenings smell like fresh bread from the bakery.';
+  const topic = 'What is “Surfing” like where you live?';
+  const draft = replyAboutTheirLine({ latest, topic, place: 'Nice, France' });
+  const again = replyAboutTheirLine({
+    latest: 'In Copenhagen I bike until I deserve something warm. What makes you actually stop?',
+    topic,
     place: 'Nice, France',
   });
-  assert.match(draft, /fresh bread/);
-  assert.match(draft, /Nice/);
-  assert.match(draft, /Surfing/);
+  assert.match(draft, /bread|bakery/i);
+  assert.match(again, /bike/i);
+  assert.notEqual(draft, again);
+  assert.doesNotMatch(draft, /you said|the part i am answering/i);
+  assert.doesNotMatch(again, /the part i am answering/i);
+  assert.equal(draft.includes(latest), false);
+  assert.equal(draft.includes(topic), false);
+  assert.equal(draftEchoes(`You said “${latest}”. ${topic}`, latest, topic), true);
+  assert.equal(draftEchoes('Bakery is the part I am answering. How does the rest of that day go?', latest, topic), true);
 });

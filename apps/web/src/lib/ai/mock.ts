@@ -1,6 +1,7 @@
 import type { AiRequest, AiResult } from './provider';
 import { detectLanguageHeuristic } from './lang';
 import { detectStopRequest } from './safety';
+import { replyAboutTheirLine } from '../table-reply';
 
 /**
  * OFFLINE MOCK PROVIDER — NOT REAL AI.
@@ -119,8 +120,9 @@ export async function mockComplete(req: AiRequest): Promise<AiResult> {
       const sensitive = /western union|money|iban/i.test(latest);
       const lang = (req.system.match(/Write ONLY in [^(]+\((\w\w)\)/) || [])[1] || 'en';
       const p = PHRASES[lang] ?? PHRASES.en;
-      const detail = latest.replace(/\s+/g, ' ').trim().slice(0, 80);
-      const line = stop || sensitive ? p.bye : detail ? `You said “${detail}”. ${topic}`.trim() : topic || p.hi;
+      const mentioned = (req.system.match(/The user says they are in ([^.]+)\./) || [])[1] ?? '';
+      const place = mentioned && mentioned !== 'their own city' ? mentioned : '';
+      const line = stop || sensitive ? p.bye : replyAboutTheirLine({ latest, topic, place });
       out = {
         text: line,
         hold: stop || sensitive,

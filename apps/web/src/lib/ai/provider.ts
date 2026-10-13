@@ -1,6 +1,7 @@
-import { mockComplete } from './mock';
-
 export type AiTask = 'opener' | 'reply' | 'translate' | 'match' | 'photo_observe' | 'photo_caption' | 'world_reply' | 'cafe_guest';
+
+/** Cultural Café calls this model and no other. Env cannot switch it. */
+export const SONNET_MODEL = 'claude-sonnet-5';
 
 export type AiPart =
   | { type: 'text'; text: string }
@@ -39,21 +40,43 @@ export function aiConfig() {
     return {
       provider: 'openai-compatible',
       apiKey: neonToken,
-      model: process.env.AI_MODEL || 'claude-sonnet-5',
-      visionModel: process.env.AI_VISION_MODEL || '',
+      model: SONNET_MODEL,
+      visionModel: SONNET_MODEL,
       baseUrl: `${neonHost}/v1`,
       isMock: false,
     };
   }
 
-  const provider = (process.env.AI_PROVIDER || 'openai').toLowerCase();
+  const requested = (process.env.AI_PROVIDER || '').toLowerCase();
+  const apiKey = process.env.AI_API_KEY || '';
+  const baseUrl = (process.env.AI_BASE_URL || '').replace(/\/$/, '');
+  if (requested === 'openai-compatible' && baseUrl) {
+    return {
+      provider: 'openai-compatible',
+      apiKey,
+      model: SONNET_MODEL,
+      visionModel: SONNET_MODEL,
+      baseUrl,
+      isMock: false,
+    };
+  }
+  if (requested === 'anthropic') {
+    return {
+      provider: 'anthropic',
+      apiKey,
+      model: SONNET_MODEL,
+      visionModel: SONNET_MODEL,
+      baseUrl: baseUrl || 'https://api.anthropic.com',
+      isMock: false,
+    };
+  }
   return {
-    provider,
-    apiKey: process.env.AI_API_KEY || '',
-    model: process.env.AI_MODEL || (provider === 'anthropic' ? 'claude-sonnet-4-5' : 'gpt-4o-mini'),
-    visionModel: process.env.AI_VISION_MODEL || '',
-    baseUrl: process.env.AI_BASE_URL || '',
-    isMock: provider === 'mock',
+    provider: 'unconfigured',
+    apiKey: '',
+    model: SONNET_MODEL,
+    visionModel: SONNET_MODEL,
+    baseUrl: '',
+    isMock: false,
   };
 }
 
@@ -96,9 +119,11 @@ function claudeModel(model: string) {
 }
 
 async function openAiComplete(req: AiRequest, cfg: ReturnType<typeof aiConfig>): Promise<AiResult> {
-  const base = (cfg.provider === 'openai-compatible' ? cfg.baseUrl : cfg.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '');
-  if (!base) throw new AiConfigError('AI_BASE_URL is required for openai-compatible providers');
-  const model = req.vision && cfg.visionModel ? cfg.visionModel : cfg.model;
+  const base = cfg.baseUrl.replace(/\/$/, '');
+  if (!base || /api\.openai\.com/i.test(base)) {
+    throw new AiConfigError('This app only uses Claude Sonnet.');
+  }
+  const model = SONNET_MODEL;
   const claude = claudeModel(model);
   const messages = [
     {
@@ -147,7 +172,7 @@ async function openAiComplete(req: AiRequest, cfg: ReturnType<typeof aiConfig>):
 }
 
 async function anthropicComplete(req: AiRequest, cfg: ReturnType<typeof aiConfig>): Promise<AiResult> {
-  const model = req.vision && cfg.visionModel ? cfg.visionModel : cfg.model;
+  const model = SONNET_MODEL;
   const data = await postJson(
     `${(cfg.baseUrl || 'https://api.anthropic.com').replace(/\/$/, '')}/v1/messages`,
     { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' },
@@ -155,7 +180,6 @@ async function anthropicComplete(req: AiRequest, cfg: ReturnType<typeof aiConfig
       model,
       system: req.system + (req.json ? '\n\nRespond with a single JSON object only, no prose, no code fences.' : ''),
       max_tokens: req.maxTokens ?? 1200,
-      temperature: req.temperature ?? 0.8,
       messages: req.messages.map((m) => ({
         role: m.role,
         content:
@@ -184,19 +208,17 @@ async function anthropicComplete(req: AiRequest, cfg: ReturnType<typeof aiConfig
 
 export async function complete(req: AiRequest): Promise<AiResult> {
   const cfg = aiConfig();
-  if (cfg.isMock) return mockComplete(req);
-  if (!cfg.apiKey && cfg.provider !== 'openai-compatible') {
-    throw new AiConfigError('AI is not configured: set AI_API_KEY (and AI_PROVIDER / AI_MODEL) in apps/web/.env');
+  if (cfg.model !== SONNET_MODEL || cfg.visionModel !== SONNET_MODEL || cfg.isMock) {
+    throw new AiConfigError('This app only uses Claude Sonnet.');
   }
-  switch (cfg.provider) {
-    case 'openai':
-    case 'openai-compatible':
-      return openAiComplete(req, cfg);
-    case 'anthropic':
-      return anthropicComplete(req, cfg);
-    default:
-      throw new AiConfigError(`Unknown AI_PROVIDER "${cfg.provider}"`);
+  if (cfg.provider !== 'openai-compatible' && cfg.provider !== 'anthropic') {
+    throw new AiConfigError('This app only uses Claude Sonnet. Other models and the offline mock are turned off.');
   }
+  if (!cfg.apiKey) {
+    throw new AiConfigError('Claude Sonnet is not configured. Set NEON_AI_GATEWAY_TOKEN and NEON_AI_GATEWAY_BASE_URL, or an Anthropic AI_API_KEY.');
+  }
+  if (cfg.provider === 'openai-compatible') return openAiComplete(req, cfg);
+  return anthropicComplete(req, cfg);
 }
 
 /** Extracts the first JSON object from model output (tolerates code fences / stray prose). */
