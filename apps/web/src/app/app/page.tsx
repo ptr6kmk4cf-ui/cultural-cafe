@@ -59,7 +59,7 @@ export default async function Home() {
               <h2 className="text-lg font-bold text-white">Meet someone</h2>
               <p className="mt-1 text-sm text-ink-300">
                 {profileReady
-                  ? 'Spin for a random person, tap a name, or pick a city on the map.'
+                  ? 'Spin for a random person, or pick a city on the map.'
                   : 'This opens after your profile.'}
               </p>
             </div>

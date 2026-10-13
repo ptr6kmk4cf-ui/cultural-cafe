@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { CAFE_PROMPTS } from '@conversa/shared';
 import { InviteFriend } from '@/components/InviteFriend';
-import { Alert, Badge, Empty, Field, PageHeader, Spinner, useToast } from '@/components/ui';
+import { Alert, Field, PageHeader, Spinner, useToast } from '@/components/ui';
 import { api } from '@/lib/client';
 import { forgetDeviceLines } from '@/lib/cafe-device';
 
@@ -31,7 +31,6 @@ type CafeState = { profile: Profile; invites: Invite[]; conversation: { id: stri
 
 export default function WorldPage() {
   const [state, setState] = useState<CafeState | null>(null);
-  const [people, setPeople] = useState<Card[] | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
@@ -62,7 +61,6 @@ export default function WorldPage() {
   useEffect(() => {
     setFromFriend(new URLSearchParams(window.location.search).get('from') === 'friend');
     load(true).catch((e) => setError(e.message));
-    api<{ people: Card[] }>('/api/world/people').then((d) => setPeople(d.people)).catch(() => {});
     api('/api/photos').then((d) => setPhotos(d.photos.filter((p: Photo) => p.category !== 'PRIVATE'))).catch(() => {});
     function jump() {
       const id = window.location.hash.replace('#', '');
@@ -164,36 +162,15 @@ export default function WorldPage() {
     setBusy('');
   }
 
-  async function invite(person: Card) {
-    setError('');
-    setBusy(person.id);
-    try {
-      const r = await api<{ conversation?: { id: string } | null }>('/api/world/invite', { body: { toId: person.id } });
-      if (r.conversation?.id) {
-        window.location.href = `/app/world/${r.conversation.id}`;
-        return;
-      }
-      setError(`${person.name} still has to accept. The table has not started. Tap a guest to sit down now.`);
-      document.getElementById('meet')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      await load();
-    } catch (e) {
-      setError((e as Error).message);
-      document.getElementById('meet')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-    setBusy('');
-  }
-
   if (!state) return error ? <Alert kind="error">{error}</Alert> : <Spinner />;
   const showFriendHint = fromFriend && !form.optedIn && !invites.some((i) => i.kind === 'FRIEND');
   const profileReady = !!form.city.trim() && form.optedIn;
-  const guests = (people ?? []).filter((p) => p.guest);
-  const others = (people ?? []).filter((p) => !p.guest);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Café"
-        subtitle="Save your profile, then tap a name. A table is timed."
+        subtitle="Save your profile. Then spin, or pick a city. A table is timed."
       />
       {error && <Alert kind="error">{error}</Alert>}
       {showFriendHint && (
@@ -249,65 +226,7 @@ export default function WorldPage() {
             <Link href="/app/world/map" className="text-brand-300 hover:underline">pick a city</Link>.
           </p>
         </div>
-        {error && <Alert kind="error">{error}</Alert>}
-        {!profileReady && <Alert kind="info">Add your city and tap Save profile. The names show up here after that.</Alert>}
-        {profileReady && !people && <Spinner />}
-        {profileReady && people && guests.length === 0 && others.length === 0 && (
-          <Empty title="Nobody to meet yet">Use the link further down for someone you already know.</Empty>
-        )}
-        {profileReady && guests.length > 0 && (
-          <div className="space-y-3">
-            <h3 className="font-semibold text-white">Here now</h3>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {guests.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className="card space-y-2 text-left transition hover:border-brand-500/40"
-                  disabled={!!busy}
-                  onClick={() => invite(p)}
-                >
-                  <span className="flex items-center gap-3">
-                    <span className="grid h-14 w-14 place-items-center overflow-hidden rounded-2xl bg-white/10 text-lg font-bold text-white">
-                      {p.portraitUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.portraitUrl} alt="" className="h-full w-full object-cover" />
-                      ) : p.name.slice(0, 1)}
-                    </span>
-                    <span>
-                      <span className="block text-lg font-semibold text-white underline decoration-white/30 underline-offset-4">{p.name}</span>
-                      <span className="block text-xs text-ink-400">{[p.city, p.country].filter(Boolean).join(', ')} · {p.languageLabel}</span>
-                      <span className="mt-1 inline-flex"><Badge>Guest</Badge></span>
-                    </span>
-                  </span>
-                  {p.bio && <span className="block text-sm text-ink-200">{p.bio}</span>}
-                  <span className="btn-primary w-full">{busy === p.id ? 'Opening the table…' : `Sit with ${p.name}`}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        {profileReady && others.length > 0 && (
-          <div className="space-y-3">
-            <h3 className="font-semibold text-white">They have to say yes</h3>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {others.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className="card space-y-2 text-left transition hover:border-brand-500/40"
-                  disabled={!!busy}
-                  onClick={() => invite(p)}
-                >
-                  <span className="block text-lg font-semibold text-white underline decoration-white/30 underline-offset-4">{p.name}</span>
-                  <span className="block text-xs text-ink-400">{[p.city, p.country].filter(Boolean).join(', ') || 'Somewhere'} · {p.languageLabel}</span>
-                  {p.bio && <span className="block text-sm text-ink-200">{p.bio}</span>}
-                  <span className="btn-secondary w-full">{busy === p.id ? 'Asking…' : `Ask ${p.name}`}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        {!profileReady && <Alert kind="info">Add your city and tap Save profile.</Alert>}
         {invites.length > 0 && (
           <div className="space-y-3">
             <h3 className="font-semibold text-white">Still waiting</h3>
@@ -317,7 +236,7 @@ export default function WorldPage() {
                   <p className="font-medium text-white">{i.peer?.name ?? 'Someone'}{i.peer?.city ? ` · ${i.peer.city}` : ''}</p>
                   <p className="text-sm text-ink-300">
                     {i.iAccepted
-                      ? 'You said yes. The table starts when they say yes. Until then, sit with a guest above.'
+                      ? 'You said yes. The table starts when they say yes.'
                       : 'Tap Accept to sit down, or Decline to skip them.'}
                   </p>
                 </div>
