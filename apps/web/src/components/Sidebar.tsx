@@ -23,9 +23,7 @@ export function Sidebar({ user }: { user: { name: string; email: string; plan: s
   const { t } = useUi();
   const [open, setOpen] = useState(false);
   const active = (href: string) => (href === '/app' || href === '/app/world' ? path === href : path.startsWith(href));
-  const current = path.startsWith('/app/admin/links')
-    ? 'Live links'
-    : path.startsWith('/app/world/map')
+  const current = path.startsWith('/app/world/map')
       ? t('map')
       : path.startsWith('/app/world/spin')
         ? t('spin')
@@ -33,7 +31,7 @@ export function Sidebar({ user }: { user: { name: string; email: string; plan: s
           ? t('online')
           : path.startsWith('/app/world/')
           ? t('cafe')
-        : (NAV.find((n) => active(n.href)) ? t(NAV.find((n) => active(n.href))!.key) : (path.startsWith('/app/admin') ? 'Admin' : 'Cultural Café'));
+        : (NAV.find((n) => active(n.href)) ? t(NAV.find((n) => active(n.href))!.key) : 'Cultural Café');
 
   return (
     <>
@@ -64,16 +62,6 @@ export function Sidebar({ user }: { user: { name: string; email: string; plan: s
               {t(n.key)}
             </Link>
           ))}
-          {user.role === 'ADMIN' && (
-            <>
-              <Link href="/app/admin" onClick={() => setOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm md:py-2 ${path === '/app/admin' ? 'bg-white/10 text-white' : 'text-ink-300 hover:bg-white/5'}`}>
-                <span className="w-4 text-center text-xs">⚙</span>Admin
-              </Link>
-              <Link href="/app/admin/links" onClick={() => setOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm md:py-2 ${active('/app/admin/links') ? 'bg-white/10 text-white' : 'text-ink-300 hover:bg-white/5'}`}>
-                <span className="w-4 text-center text-xs">↔</span>Live links
-              </Link>
-            </>
-          )}
         </nav>
         <div className="mt-3 rounded-xl border border-white/5 bg-white/5 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-xs">
           <Link href="/app/privacy" onClick={() => setOpen(false)} className="block truncate font-semibold text-white hover:underline">
