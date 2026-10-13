@@ -3,46 +3,23 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui';
 import { api } from '@/lib/client';
-
-type Invite = {
-  id: string;
-  iAccepted: boolean;
-  peer: { name: string; city: string } | null;
-};
+import { subscribeCafePoll, type RequestInvite } from '@/lib/request-notice';
 
 export function WaitingInvites() {
-  const [invites, setInvites] = useState<Invite[]>([]);
+  const [invites, setInvites] = useState<RequestInvite[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const sawInvite = useRef(false);
 
-  async function load() {
-    const s = await api<{ invites: Invite[]; conversation: { id: string } | null }>('/api/world/state');
-    const pending = s.invites ?? [];
-    if (pending.length) sawInvite.current = true;
-    if (s.conversation && sawInvite.current) {
-      window.location.href = `/app/world/${s.conversation.id}`;
-      return;
-    }
-    setInvites(pending);
-  }
-
   useEffect(() => {
-    let timer = 0;
-    let stopped = false;
-    async function tick() {
-      try {
-        await load();
-      } catch {
-        /* home still works if this check fails */
+    return subscribeCafePoll((state) => {
+      if (state.invites.length) sawInvite.current = true;
+      if (state.conversationId && sawInvite.current) {
+        window.location.href = `/app/world/${state.conversationId}`;
+        return;
       }
-      if (!stopped) timer = window.setTimeout(tick, 8000);
-    }
-    tick();
-    return () => {
-      stopped = true;
-      window.clearTimeout(timer);
-    };
+      setInvites(state.invites);
+    });
   }, []);
 
   async function respond(id: string, accept: boolean) {
@@ -51,7 +28,7 @@ export function WaitingInvites() {
     try {
       const r = await api<{ conversation: { id: string } | null }>(`/api/world/invites/${id}`, { body: { accept } });
       if (r.conversation) window.location.href = `/app/world/${r.conversation.id}`;
-      else await load();
+      else setInvites((current) => current.filter((invite) => invite.id !== id));
     } catch (e) {
       setError((e as Error).message);
     }

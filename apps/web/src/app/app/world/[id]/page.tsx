@@ -62,13 +62,21 @@ export default function WorldChat() {
   const onRemote = useCallback((data: unknown) => {
     const m = data as Msg;
     if (!m?.id || !m.text) return;
-    setMsgs((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, { ...m, mine: false }]));
+    const text = String(m.text).slice(0, 4000);
+    const translation = m.translation ? String(m.translation).slice(0, 4000) : null;
+    setMsgs((prev) => {
+      if (prev.some((x) => x.id === m.id)) return prev;
+      const next = [...prev, { ...m, text, translation, mine: false }];
+      return next.length > 200 ? next.slice(-200) : next;
+    });
   }, []);
 
   const ended = conv?.status !== 'ACTIVE' || left <= 0;
   const guestHour = !!conv?.peer?.guest && conv.id === id;
   const { status: peer, send: sendPeer } = useWorldPeer(id, conv?.offerer, conv?.ice, !!conv && !ended && !guestHour, onRemote);
+  const peerRef = useRef(peer);
   sendPeerRef.current = sendPeer;
+  peerRef.current = peer;
   msgsRef.current = msgs;
 
   async function refresh() {
@@ -88,6 +96,10 @@ export default function WorldChat() {
   useEffect(() => {
     if (keep) saveDeviceLines(id, msgs);
   }, [keep, id, msgs]);
+
+  useEffect(() => {
+    if (msgs.length > 200) setMsgs((current) => current.slice(-200));
+  }, [msgs]);
 
   useEffect(() => {
     refresh().catch((e) => setError(e.message));
@@ -123,7 +135,7 @@ export default function WorldChat() {
     let closed = false;
     const beat = () => {
       if (closed) return;
-      const phase = guestHour || peer === 'open' ? 'open' : 'connecting';
+      const phase = guestHour || peerRef.current === 'open' ? 'open' : 'connecting';
       api(`/api/world/conversations/${hourId}/link`, { body: { phase } }).catch(() => {});
     };
     const release = () => {
@@ -159,7 +171,7 @@ export default function WorldChat() {
       }, 1500);
       pendingRelease.current = { id: hourId, timer };
     };
-  }, [id, ended, peer, guestHour]);
+  }, [id, ended, guestHour]);
 
   useEffect(() => {
     const t = setInterval(() => setLeft((ms) => Math.max(0, ms - 1000)), 1000);
@@ -504,7 +516,7 @@ export default function WorldChat() {
       <div className="card min-h-[8rem] flex-1 space-y-3 overflow-y-auto p-3" data-world-thread data-world-peer={guestHour ? 'open' : peer}>
         {msgs.length === 0 && (
           <p className="text-sm text-ink-400">
-            Write in your language. {peerName}&apos;s answer shows here in your language.
+            Write in your language. {conv?.peer?.name ? `${conv.peer.name}'s` : 'Their'} answer shows here in your language.
           </p>
         )}
         {msgs.map((m) => {

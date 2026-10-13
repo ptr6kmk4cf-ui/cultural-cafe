@@ -56,27 +56,73 @@ export function useWorldPeer(
     let channel: RTCDataChannel | null = null;
     let activeAttempt = '';
     let iceFlushTimer = 0;
+    let channelCloseTimer = 0;
     let bornAt = 0;
     const usedAttempts = new Set<string>();
     const seenSignals = new Set<string>();
 
     const live = (next: RTCPeerConnection) => !closed && conn === next;
 
+    const rememberAttempt = (id: string) => {
+      if (!id) return;
+      usedAttempts.add(id);
+      if (usedAttempts.size <= 24) return;
+      const first = usedAttempts.values().next().value;
+      if (first) usedAttempts.delete(first);
+    };
+
+    const rememberSignal = (id: string) => {
+      if (seenSignals.has(id)) return false;
+      seenSignals.add(id);
+      if (seenSignals.size > 180) {
+        const first = seenSignals.values().next().value;
+        if (first) seenSignals.delete(first);
+      }
+      return true;
+    };
+
+    const detach = (peer: RTCPeerConnection | null, ch: RTCDataChannel | null) => {
+      if (ch) {
+        ch.onopen = null;
+        ch.onclose = null;
+        ch.onmessage = null;
+        ch.onerror = null;
+      }
+      if (!peer) return;
+      peer.onicecandidate = null;
+      peer.oniceconnectionstatechange = null;
+      peer.onconnectionstatechange = null;
+      peer.ondatachannel = null;
+      peer.onicegatheringstatechange = null;
+      peer.onnegotiationneeded = null;
+    };
+
     const closeSockets = () => {
       clearTimeout(pollTimer);
       clearTimeout(handshakeTimer);
       clearTimeout(disconnectTimer);
       clearTimeout(iceFlushTimer);
+      clearTimeout(channelCloseTimer);
       pollTimer = 0;
       handshakeTimer = 0;
       disconnectTimer = 0;
       iceFlushTimer = 0;
+      channelCloseTimer = 0;
       const oldChannel = channel;
       const oldConn = conn;
       channel = null;
       conn = null;
-      oldChannel?.close();
-      oldConn?.close();
+      detach(oldConn, oldChannel);
+      try {
+        oldChannel?.close();
+      } catch {
+        /* already closed */
+      }
+      try {
+        oldConn?.close();
+      } catch {
+        /* already closed */
+      }
       if (dc.current === oldChannel) dc.current = null;
       if (pc.current === oldConn) pc.current = null;
     };
@@ -84,10 +130,10 @@ export function useWorldPeer(
     const post = (type: string, payload: string) =>
       api(`/api/world/conversations/${conversationId}/signal`, { body: { type, payload } }).catch(() => null);
 
-    const restart = (fromAttempt?: string) => {
+    const restart = (fromAttempt?: string, silent = false) => {
       if (closed || restarting) return;
       restarting = true;
-      if (fromAttempt) void post('restart', JSON.stringify({ attemptId: fromAttempt }));
+      if (fromAttempt && !silent) void post('restart', JSON.stringify({ attemptId: fromAttempt }));
       closeSockets();
       clearTimeout(restartTimer);
       const wait = Math.min(4_000, 500 * 2 ** Math.min(tries, 3)) + Math.floor(Math.random() * 250);
@@ -120,6 +166,10 @@ export function useWorldPeer(
       const pending: IceInit[] = [];
       const localIce: IceInit[] = [];
       const iceBuf: IceInit[] = [];
+      const pushIce = (list: IceInit[], init: IceInit) => {
+        list.push(init);
+        if (list.length > 32) list.splice(0, list.length - 32);
+      };
 
       const currentAttempt = () => (offerer ? attemptId : answeredOffer);
 
@@ -130,7 +180,7 @@ export function useWorldPeer(
         const batch = iceBuf.splice(0);
         if (!batch.length) return;
         if (!id) {
-          localIce.push(...batch);
+          for (const init of batch) pushIce(localIce, init);
           return;
         }
         void post('ice', icePayload(id, batch));
@@ -138,7 +188,7 @@ export function useWorldPeer(
 
       const queueIce = (init: IceInit) => {
         if (!init.candidate) return;
-        iceBuf.push(init);
+        pushIce(iceBuf, init);
         if (!iceFlushTimer) iceFlushTimer = window.setTimeout(flushIceBuf, ICE_FLUSH_MS);
       };
 
@@ -150,7 +200,7 @@ export function useWorldPeer(
 
       const applyRemoteIce = async (candidates: IceInit[]) => {
         for (const init of candidates) {
-          if (!remoteSet) pending.push(init);
+          if (!remoteSet) pushIce(pending, init);
           else {
             try {
               await next.addIceCandidate(init);
@@ -209,7 +259,8 @@ export function useWorldPeer(
         };
         ch.onclose = () => {
           if (!live(next) || restarting) return;
-          window.setTimeout(() => {
+          clearTimeout(channelCloseTimer);
+          channelCloseTimer = window.setTimeout(() => {
             if (live(next) && ch.readyState !== 'open') restart(currentAttempt() || attemptId);
           }, 1_500);
         };
@@ -262,7 +313,7 @@ export function useWorldPeer(
       };
 
       if (offerer) {
-        usedAttempts.add(attemptId);
+        rememberAttempt(attemptId);
         attach(next.createDataChannel('world', { ordered: true }));
         next
           .createOffer()
@@ -292,12 +343,7 @@ export function useWorldPeer(
           if (r.cursor) cursor = r.cursor;
           const fresh: { id: string; type: string; createdAt: string; body: NonNullable<ReturnType<typeof parseSignalBody>> }[] = [];
           for (const s of r.signals) {
-            if (seenSignals.has(s.id)) continue;
-            seenSignals.add(s.id);
-            if (seenSignals.size > 240) {
-              const first = seenSignals.values().next().value;
-              if (first) seenSignals.delete(first);
-            }
+            if (!rememberSignal(s.id)) continue;
             const body = parseSignalBody(s.payload);
             if (body) fresh.push({ ...s, body });
             if (!r.cursor && s.createdAt > cursor) cursor = s.createdAt;
@@ -313,6 +359,10 @@ export function useWorldPeer(
             const offers = fresh.filter((s) => s.type === 'offer' && s.body.description?.type === 'offer' && !usedAttempts.has(s.body.attemptId));
             const latest = offers.at(-1);
             const description = latest?.body.description;
+            if (latest && description && linkOpen() && latest.body.attemptId !== answeredOffer) {
+              restart(undefined, true);
+              return;
+            }
             if (latest && description && !linkOpen()) {
               if (answeredOffer) {
                 restart(answeredOffer);
@@ -330,7 +380,7 @@ export function useWorldPeer(
                 if (!live(next)) return;
                 await next.setLocalDescription(answer);
                 await post('answer', JSON.stringify({ attemptId: offerAttempt, description: answer }));
-                usedAttempts.add(offerAttempt);
+                rememberAttempt(offerAttempt);
                 await flushPendingIce();
               } catch {
                 answeredOffer = '';
@@ -381,7 +431,7 @@ export function useWorldPeer(
       const iceState = conn?.iceConnectionState;
       const iceDead = iceState === 'failed' || iceState === 'disconnected' || iceState === 'closed';
       if (channel?.readyState === 'open') {
-        if (iceDead) restart(activeAttempt || undefined);
+        if (iceState === 'failed' || iceState === 'closed') restart(activeAttempt || undefined);
         return;
       }
       if (!iceDead && Date.now() - bornAt < HANDSHAKE_MS) return;
@@ -402,8 +452,10 @@ export function useWorldPeer(
   }, [conversationId, offerer, enabled, iceKey]);
 
   function send(data: unknown) {
-    if (dc.current?.readyState !== 'open') throw new Error('Peer connection is not open yet.');
-    dc.current.send(JSON.stringify(data));
+    const channel = dc.current;
+    if (channel?.readyState !== 'open') throw new Error('Peer connection is not open yet.');
+    if (channel.bufferedAmount > 262_144) throw new Error('The connection is still sending. Wait a moment.');
+    channel.send(JSON.stringify(data));
   }
 
   return { status, send };

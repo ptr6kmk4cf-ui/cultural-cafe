@@ -6,8 +6,20 @@ import { HttpError } from './http';
  */
 const buckets = new Map<string, { count: number; resetAt: number }>();
 
+function pruneBuckets(now: number) {
+  for (const [key, bucket] of buckets) {
+    if (bucket.resetAt < now) buckets.delete(key);
+  }
+  while (buckets.size > 2000) {
+    const oldest = buckets.keys().next().value;
+    if (!oldest) break;
+    buckets.delete(oldest);
+  }
+}
+
 export function rateLimit(key: string, limit: number, windowMs: number) {
   const now = Date.now();
+  if (buckets.size > 500) pruneBuckets(now);
   const b = buckets.get(key);
   if (!b || b.resetAt < now) {
     buckets.set(key, { count: 1, resetAt: now + windowMs });

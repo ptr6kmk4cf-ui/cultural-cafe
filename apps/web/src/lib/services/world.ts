@@ -153,6 +153,7 @@ async function discardTableWork(ids: string[]) {
   if (!ids.length) return;
   await wipeHourRecords(ids);
   await db.worldInvite.deleteMany({ where: { conversationId: { in: ids } } });
+  for (const id of ids) forgetSignalMemory(id);
 }
 
 export async function expireStale(force = false) {
@@ -194,13 +195,24 @@ async function ejectUserContent() {
   await ejectQuietLinks();
 }
 
+function forgetSignalMemory(conversationId: string, userId?: string) {
+  if (!userId) signalSweepAt.delete(conversationId);
+  for (const key of signalPartCache.keys()) {
+    if (userId ? key === `${userId}:${conversationId}` : key.endsWith(`:${conversationId}`)) signalPartCache.delete(key);
+  }
+}
+
 async function dropLinkData(conversationId: string, userId: string) {
   await Promise.all([
     db.worldSignal.deleteMany({ where: { conversationId, fromId: userId } }),
     db.worldPeerLink.deleteMany({ where: { conversationId, userId } }),
   ]);
+  forgetSignalMemory(conversationId, userId);
   const left = await db.worldPeerLink.count({ where: { conversationId } });
-  if (!left) await db.worldSignal.deleteMany({ where: { conversationId } });
+  if (!left) {
+    await db.worldSignal.deleteMany({ where: { conversationId } });
+    forgetSignalMemory(conversationId);
+  }
 }
 
 /** Someone closed the hour. Their connection setup is removed immediately. */
@@ -244,7 +256,11 @@ async function ejectQuietLinks() {
   });
   const live = new Set(still.map((s) => s.conversationId));
   const empty = ids.filter((id) => !live.has(id));
-  if (empty.length) await db.worldSignal.deleteMany({ where: { conversationId: { in: empty } } });
+  if (empty.length) {
+    await db.worldSignal.deleteMany({ where: { conversationId: { in: empty } } });
+    for (const id of empty) forgetSignalMemory(id);
+  }
+  for (const row of stale) forgetSignalMemory(row.conversationId, row.userId);
 }
 
 function linkPerson(
@@ -875,18 +891,30 @@ const SIGNAL_SWEEP_MS = 15_000;
 const signalPartCache = new Map<string, { at: number; c: WorldConversation }>();
 const signalSweepAt = new Map<string, number>();
 
+function pruneSignalMemory() {
+  const now = Date.now();
+  for (const [key, value] of signalPartCache) {
+    if (now - value.at > SIGNAL_PART_TTL_MS) signalPartCache.delete(key);
+  }
+  while (signalPartCache.size > 200) {
+    const oldest = signalPartCache.keys().next().value;
+    if (!oldest) break;
+    signalPartCache.delete(oldest);
+  }
+  while (signalSweepAt.size > 200) {
+    const oldest = signalSweepAt.keys().next().value;
+    if (!oldest) break;
+    signalSweepAt.delete(oldest);
+  }
+}
+
 async function requireParticipantForSignal(userId: string, conversationId: string, fresh = false) {
   const key = `${userId}:${conversationId}`;
   const hit = signalPartCache.get(key);
   if (!fresh && hit && Date.now() - hit.at < SIGNAL_PART_TTL_MS && hit.c.status === 'ACTIVE' && hit.c.endsAt > new Date()) return hit.c;
   const c = await requireParticipant(userId, conversationId);
   signalPartCache.set(key, { at: Date.now(), c });
-  if (signalPartCache.size > 400) {
-    const now = Date.now();
-    for (const [k, v] of signalPartCache) {
-      if (now - v.at > SIGNAL_PART_TTL_MS) signalPartCache.delete(k);
-    }
-  }
+  if (signalPartCache.size > 200 || signalSweepAt.size > 200) pruneSignalMemory();
   return c;
 }
 
@@ -896,8 +924,30 @@ async function sweepSignals(conversationId: string, force = false) {
   if (!force && now - last < SIGNAL_SWEEP_MS) return;
   signalSweepAt.set(conversationId, now);
   await db.worldSignal.deleteMany({
-    where: { conversationId, type: 'ice', createdAt: { lt: new Date(now - 90_000) } },
+    where: {
+      conversationId,
+      OR: [
+        { type: 'ice', createdAt: { lt: new Date(now - 60_000) } },
+        { type: 'restart', createdAt: { lt: new Date(now - 120_000) } },
+      ],
+    },
   });
+  const count = await db.worldSignal.count({ where: { conversationId } });
+  if (count <= 48) return;
+  const [recent, latestOffer, latestAnswer] = await Promise.all([
+    db.worldSignal.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'desc' },
+      take: 24,
+      select: { id: true },
+    }),
+    db.worldSignal.findFirst({ where: { conversationId, type: 'offer' }, orderBy: { createdAt: 'desc' }, select: { id: true } }),
+    db.worldSignal.findFirst({ where: { conversationId, type: 'answer' }, orderBy: { createdAt: 'desc' }, select: { id: true } }),
+  ]);
+  const keep = new Set(recent.map((row) => row.id));
+  if (latestOffer) keep.add(latestOffer.id);
+  if (latestAnswer) keep.add(latestAnswer.id);
+  await db.worldSignal.deleteMany({ where: { conversationId, id: { notIn: [...keep] } } });
 }
 
 async function rememberPeerLink(conversationId: string, userId: string, attemptId: string, phase: string) {
