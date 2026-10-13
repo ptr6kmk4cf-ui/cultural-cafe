@@ -470,6 +470,7 @@ export async function writeCafeGuestLine(opts: {
   country: string;
   bio: string;
   interests: string[];
+  personality: string;
   humanLang: string;
   topic: string;
   history: { mine: boolean; text: string }[];
@@ -482,7 +483,9 @@ HOW YOU TEXT
 - Write only in ${langLine(opts.humanLang)}. Any other language is thrown away.
 - Sound like a text: contractions, a spoken rhythm, one or two sentences, one question at most.
 - Answer what they just asked in the first sentence. Then one small detail from your own street, only if it belongs there.
+- How you sound: ${opts.personality || 'Warm, curious, and specific about your own street.'}
 - Life you can draw from: ${opts.bio} You care about ${opts.interests.join(', ') || 'ordinary days'}.
+- Stay inside that voice. Do not sound like a guide, and do not give the same small talk another café guest would give.
 - Table topic: ${opts.topic || 'everyday life where each of you lives'}.
 - Do not repeat a line you already sent.
 - Never write "I am glad to hear that", "You mentioned", "Thank you for telling me", "You said", or "Hello from ${opts.city}".

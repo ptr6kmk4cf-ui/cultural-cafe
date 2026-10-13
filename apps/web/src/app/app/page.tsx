@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { InviteFriend } from '@/components/InviteFriend';
+import { WaitingInvites } from '@/components/WaitingInvites';
 import { getCurrentUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { serializeConversations } from '@/lib/services/world';
@@ -48,7 +50,7 @@ export default async function Home() {
               </p>
             </div>
           </div>
-          <Link href="/app/world#profile" className={profileReady ? 'btn-secondary' : 'btn-primary'}>
+          <Link href="/app/world" className={profileReady ? 'btn-secondary' : 'btn-primary'}>
             {profileReady ? 'Edit your profile' : 'Open your profile'}
           </Link>
         </li>
@@ -67,7 +69,6 @@ export default async function Home() {
           {profileReady ? (
             <div className="flex flex-wrap gap-2">
               <Link href="/app/world/spin" className="btn-primary">Spin at random</Link>
-              <Link href="/app/world#meet" className="btn-secondary">Meet someone</Link>
               <Link href="/app/world/map" className="btn-secondary">Open the map</Link>
             </div>
           ) : (
@@ -75,6 +76,9 @@ export default async function Home() {
           )}
         </li>
       </ol>
+
+      <WaitingInvites />
+      {profile?.inviteCode && <InviteFriend code={profile.inviteCode} />}
 
       <div className="card">
         <div className="flex items-center justify-between">

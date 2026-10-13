@@ -69,7 +69,7 @@ export default function Conversations() {
       <PageHeader
         title="Past contacts"
         subtitle="People you already sat with."
-        actions={<Link href="/app/world#meet" className="btn-primary">Meet someone</Link>}
+        actions={<Link href="/app/world/spin" className="btn-primary">Spin at random</Link>}
       />
       <div className="mb-4">
         <input className="input max-w-xs" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />

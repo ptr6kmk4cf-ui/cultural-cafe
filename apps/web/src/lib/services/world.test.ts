@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cafePromptFor, cafePromptFromPool } from '@conversa/shared';
 import { icePayload, parseSignalBody, signalPhase } from '../world-signal';
+import { CROWD } from '../cafe-crowd';
+import { VOICES } from '../cafe-voices';
 import { cafeGuestEmails, guestFollowUp, guestSlots, hardcodedTableReply, isLooseCafeEmail, nextHardcodedTableLine, scriptedGuestTurn } from './cafe-guests';
 import { INVITE_CODE_LENGTH, firstName, friendInviteMessage, friendJoinPath, isInviteCode, newInviteCode, normalizeInviteCode } from './world';
 
@@ -118,6 +120,33 @@ test('Automatic answering at a guest table uses each hardcoded line once', () =>
   const said = [first ?? ''];
   while (nextHardcodedTableLine(said)) said.push(nextHardcodedTableLine(said) as string);
   assert.equal(hardcodedTableReply(said, 'Another line.'), null);
+});
+
+test('Each café guest has a personality and speaks from it', () => {
+  const ids = CROWD.map((person) => person.id);
+  assert.deepEqual([...ids].sort(), Object.keys(VOICES).sort());
+  const personalities = Object.values(VOICES).map((voice) => voice.personality);
+  assert.equal(new Set(personalities).size, personalities.length);
+  const lines = Object.values(VOICES).flatMap((voice) => [...voice.lines]);
+  assert.equal(new Set(lines).size, lines.length);
+  for (const line of lines) {
+    assert.equal(/ordinary day/i.test(line), false);
+    assert.equal(/you mentioned/i.test(line), false);
+  }
+  const hana = scriptedGuestTurn('guest.hana@culturalcafe.invalid', [], 'en');
+  const elena = scriptedGuestTurn('guest.elena@culturalcafe.invalid', [], 'en');
+  assert.match(hana?.translation ?? '', /train|restaurant/i);
+  assert.match(elena?.translation ?? '', /bread|bakery/i);
+  assert.notEqual(hana?.translation, elena?.translation);
+  const answer = scriptedGuestTurn('guest.hana@culturalcafe.invalid', [
+    { mine: false, text: hana?.text ?? '', translation: hana?.translation },
+    { mine: true, text: 'The train home is packed.' },
+  ], 'en');
+  assert.match(answer?.translation ?? '', /train/i);
+  assert.equal(/ordinary day/i.test(answer?.translation ?? ''), false);
+  const maya = scriptedGuestTurn('guest.maya@culturalcafe.invalid', [], 'en');
+  assert.match(maya?.text ?? '', /bakery|subway/i);
+  assert.equal(maya?.translation, null);
 });
 
 test('The café keeps one hundred hardcoded people', () => {

@@ -40,7 +40,7 @@ export default function SpinPage() {
       {!people && !error && <Spinner />}
       {people && people.length === 0 && (
         <p className="text-sm text-ink-300">
-          Add your city on <Link href="/app/world#profile" className="text-brand-300 hover:underline">your profile</Link> first. Then the wheel can pick someone.
+          Add your city on <Link href="/app/world" className="text-brand-300 hover:underline">your profile</Link> first. Then the wheel can pick someone.
         </p>
       )}
       {people && people.length > 0 && (

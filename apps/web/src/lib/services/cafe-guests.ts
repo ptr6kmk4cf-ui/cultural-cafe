@@ -7,6 +7,7 @@ import { HttpError, notFound } from '../http';
 import { writeCafeGuestLine } from '../ai/tasks';
 import { contentWords, guestLineUsable } from '../table-reply';
 import { CROWD, type CrowdPerson } from '../cafe-crowd';
+import { VOICES, type GuestVoice } from '../cafe-voices';
 import { tablePromptFor } from './cafe-topics';
 
 /** Every hardcoded guest stays in the café. Real people are extra, not replacements. */
@@ -32,8 +33,9 @@ export function guestSlots(_realOptedIn: number, cap = CAFE_GUEST_CAP) {
 }
 
 function crowdGuest(person: CrowdPerson): Guest {
-  const hello = `Hello from ${person.city}. ${person.bio}`;
-  const reply = `In ${person.city} that is part of an ordinary day.`;
+  const voice = VOICES[person.id];
+  if (!voice) throw new Error(`Missing café voice for ${person.id}`);
+  const [hello, reply] = voice.lines;
   const bye = 'All right. We stop here. Take care.';
   return {
     email: `guest.${person.id}@culturalcafe.invalid`,
@@ -44,6 +46,11 @@ function crowdGuest(person: CrowdPerson): Guest {
     country: person.country,
     interests: [...person.interests],
     bio: person.bio,
+    personality: voice.personality,
+    style: voice.style,
+    humor: voice.humor,
+    formality: voice.formality,
+    gender: voice.gender,
     hello,
     reply,
     bye,
@@ -62,6 +69,11 @@ type Guest = GuestLine & {
   country: string;
   interests: string[];
   bio: string;
+  personality: string;
+  style: GuestVoice['style'];
+  humor: number;
+  formality: number;
+  gender: GuestVoice['gender'];
   english: GuestLine;
 };
 
@@ -75,6 +87,11 @@ const NAMED_GUESTS: Guest[] = [
     country: 'France',
     interests: ['bakeries', 'river walks', 'rain'],
     bio: 'I live in Lyon. Evenings smell like bread, and I like hearing what a city sounds like after work.',
+    personality: 'You notice smells, rain, and bread. You talk about Lyon in small pictures, the river after work and the bakery queue, and you ask what that same hour is like in their city.',
+    style: 'natural',
+    humor: 1,
+    formality: 1,
+    gender: 'feminine',
     hello: 'Bonjour. À Lyon, le soir sent le pain chaud. Chez toi, le soir sent quoi ?',
     reply: 'J’aime cette image. Ici on reste longtemps en terrasse. Qu’est-ce qu’on fait le dimanche dans ta ville ?',
     bye: 'D’accord. On s’arrête là. Prends soin de toi.',
@@ -93,6 +110,11 @@ const NAMED_GUESTS: Guest[] = [
     country: 'Argentina',
     interests: ['late dinners', 'football on the radio', 'bookstores'],
     bio: 'I live in Buenos Aires. Nights start late, and I like talking about ordinary Sundays.',
+    personality: 'You talk late and unhurried. Dinner, the kitchen radio, a slow Sunday walk. You would rather hear a long answer than a clever one.',
+    style: 'playful',
+    humor: 2,
+    formality: 0,
+    gender: 'masculine',
     hello: 'Hola. En Buenos Aires la noche empieza tarde. ¿Cómo empieza la noche en tu ciudad?',
     reply: 'Me gusta escucharte. Acá el domingo es para caminar sin prisa. ¿Qué haces cuando no trabajas?',
     bye: 'Está bien. Lo dejamos aquí. Cuídate.',
@@ -111,6 +133,11 @@ const NAMED_GUESTS: Guest[] = [
     country: 'Portugal',
     interests: ['trams', 'grilled fish', 'viewpoints'],
     bio: 'I live in Lisbon. I like the tram on the hills and talking about what home sounds like.',
+    personality: 'You listen for sounds. Trams, hills, grilled fish, the viewpoint when the lights come on. You ask what home sounds like.',
+    style: 'intellectual',
+    humor: 1,
+    formality: 1,
+    gender: 'feminine',
     hello: 'Olá. Em Lisboa o elétrico range nas subidas. Que som tem a tua cidade?',
     reply: 'Que bom ouvir isso. Aqui a gente fica no miradouro até escurecer. O que te faz sentir em casa?',
     bye: 'Está bem. Ficamos por aqui. Cuida-te.',
@@ -129,6 +156,11 @@ const NAMED_GUESTS: Guest[] = [
     country: 'Egypt',
     interests: ['the corniche', 'tea', 'evening walks'],
     bio: 'I live in Alexandria. Evenings are the sea and sesame, and I like hearing how another city winds down.',
+    personality: 'You are calm and concrete. The corniche, tea, sesame, the sea on your right. You describe a walk as if the other person is beside you.',
+    style: 'natural',
+    humor: 1,
+    formality: 1,
+    gender: 'masculine',
     hello: 'مرحبا. في الإسكندرية المساء فيه بحر وسمسم. كيف يبدو المساء في مدينتك؟',
     reply: 'يسعدني هذا. هنا نمشي على الكورنيش ببطء. ما الذي يذكرك ببيتك؟',
     bye: 'حسنا. نتوقف هنا. اعتنِ بنفسك.',
@@ -147,6 +179,11 @@ const NAMED_GUESTS: Guest[] = [
     country: 'Japan',
     interests: ['tea', 'evening walks', 'side streets'],
     bio: 'I live in Kyoto. Evenings near the temples smell like tea, and I like asking what a city smells like.',
+    personality: 'You are quiet and precise. Short sentences. Tea, narrow streets, rain under the eaves. You notice small sounds and you leave space.',
+    style: 'intellectual',
+    humor: 0,
+    formality: 2,
+    gender: 'feminine',
     hello: 'こんにちは。京都の夕方はお茶の匂いがします。あなたの街の夕方はどんな匂いですか？',
     reply: 'それを聞けてうれしいです。こちらでは夜にゆっくり歩きます。家を思い出す音は何ですか？',
     bye: 'わかりました。この話はここでやめましょう。気をつけて。',
@@ -165,6 +202,11 @@ const NAMED_GUESTS: Guest[] = [
     country: 'Kenya',
     interests: ['dawn runs', 'tea', 'markets'],
     bio: 'I live in Nairobi. Mornings smell like tea and bread, and I like hearing what home reminds you of.',
+    personality: 'You are warm and early. Dawn runs, the market, matatus, tea and bread. You tell one small scene, then ask for theirs.',
+    style: 'casual',
+    humor: 1,
+    formality: 0,
+    gender: 'feminine',
     hello: 'Habari. Nairobini asubuhi ina harufu ya chai na mkate. Mji wako una harufu gani asubuhi?',
     reply: 'Nimefurahi kusikia. Hapa tunakimbia alfajiri. Nini inakukumbusha nyumbani?',
     bye: 'Sawa. Tunaacha hapa. Jitunze.',
@@ -254,9 +296,20 @@ export function hardcodedTableReply(saidByMe: string[], _latestFromThem: string)
   return nextHardcodedTableLine(saidByMe);
 }
 
+function voiceLines(email: string) {
+  const id = email.match(/^guest\.([^.]+)@culturalcafe\.invalid$/)?.[1];
+  const voice = id ? VOICES[id] : undefined;
+  if (!voice) return [];
+  return voice.lines.slice(1).map((line) => ({ say: line, english: line }));
+}
+
+function followLines(email: string) {
+  return FOLLOW[email] ?? voiceLines(email);
+}
+
 /** The next guest line. Each topic is said once, on its own. */
 export function guestFollowUp(email: string, said: string[], _latest: string) {
-  const lines = FOLLOW[email] ?? [];
+  const lines = followLines(email);
   const next = lines.find((line) => !said.some((previous) => previous.includes(line.say)));
   if (!next) return null;
   return { text: next.say, english: next.english };
@@ -345,8 +398,20 @@ function focusSentence(latest: string) {
   return [...parts].reverse().find((part) => part.includes('?')) ?? parts.at(-1) ?? clean;
 }
 
+function pickVoiceLine(guest: Guest, latest: string, said: string[]) {
+  const unused = followLines(guest.email).filter((item) => !alreadySaid(said, item.english) && !alreadySaid(said, item.say));
+  const words = [...contentWords(focusSentence(latest)), ...contentWords(latest)];
+  const hit = unused.find((item) => words.some((word) => item.english.toLowerCase().includes(word)));
+  if (hit) return hit;
+  if (unused[0]) return unused[0];
+  const interest = guest.interests[0] ?? 'the street';
+  const english = `I keep coming back to ${interest} in ${guest.city}. That is the part of the day I can actually describe.`;
+  return { say: english, english: alreadySaid(said, english) ? `${english} Ask me about a different hour.` : english };
+}
+
 function pickScriptedAnswer(guest: Guest, latest: string, said: string[], topic: string) {
   const bank = ANSWERS[guest.email] ?? [];
+  if (!bank.length) return pickVoiceLine(guest, latest, said);
   const focus = focusSentence(latest);
   for (const pool of [focus, latest]) {
     const hit = bank.find((item) => item.test.test(pool) && !alreadySaid(said, item.english));
@@ -357,16 +422,9 @@ function pickScriptedAnswer(guest: Guest, latest: string, said: string[], topic:
     const hit = bank.find((item) => item.test.test(topic) && !alreadySaid(said, item.english));
     if (hit) return hit;
   }
-  const fact = (FOLLOW[guest.email] ?? []).find((item) => !alreadySaid(said, item.english) && !alreadySaid(said, item.say));
-  if (fact) {
-    const english = word ? `You mentioned ${word}. ${fact.english}` : fact.english;
-    if (!alreadySaid(said, english)) return { say: fact.say, english };
-  }
-  const english = word ? `In ${guest.city} I am staying with ${word}.` : `In ${guest.city} that is part of an ordinary day.`;
-  return {
-    say: guest.reply,
-    english: alreadySaid(said, english) ? `${english} This is a different moment.` : english,
-  };
+  const fact = followLines(guest.email).find((item) => !alreadySaid(said, item.english) && !alreadySaid(said, item.say));
+  if (fact) return { say: fact.say, english: fact.english };
+  return pickVoiceLine(guest, latest, said);
 }
 
 function inviteCode() {
@@ -412,20 +470,32 @@ async function paintGuestIdentity(id: string, guest: Guest) {
     update: { myLanguage: guest.language, defaultReplyLanguage: guest.language, preferredLanguages: [guest.language, 'en'] },
     create: { userId: id, myLanguage: guest.language, defaultReplyLanguage: guest.language, preferredLanguages: [guest.language, 'en'] },
   });
+  const voice = guestVoiceData(guest);
   await db.personalityProfile.upsert({
     where: { userId: id },
-    update: { displayName: guest.name, aboutMe, interests: guest.interests },
+    update: { displayName: guest.name, aboutMe, interests: guest.interests, ...voice },
     create: {
       userId: id,
       displayName: guest.name,
       aboutMe,
       interests: guest.interests,
       intentions: 'a café table about everyday life',
-      personality: 'warm, curious, not romantic',
-      style: 'natural',
-      flirtingLevel: 0,
+      ...voice,
     },
   });
+}
+
+function guestVoiceData(guest: Guest) {
+  return {
+    personality: guest.personality,
+    style: guest.style,
+    humorLevel: guest.humor,
+    formality: guest.formality,
+    grammaticalGender: guest.gender,
+    flirtingLevel: 0,
+    useEmojis: false,
+    messageLength: 'short',
+  };
 }
 
 async function paintGuests() {
@@ -497,9 +567,7 @@ async function ensureGuest(guest: Guest) {
             aboutMe: encrypt(guest.bio),
             interests: guest.interests,
             intentions: 'a café table about everyday life',
-            personality: 'warm, curious, not romantic',
-            style: 'natural',
-            flirtingLevel: 0,
+            ...guestVoiceData(guest),
           },
         },
         worldProfile: {
@@ -593,6 +661,7 @@ async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[],
       country: guest.country,
       bio: guest.bio,
       interests: guest.interests,
+      personality: guest.personality,
       humanLang,
       topic,
       history: visible,
