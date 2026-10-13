@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { detectSensitiveRequest, detectStopRequest, sanitizeUntrusted } from '../ai/safety';
-import { encrypt } from '../crypto';
+import { decrypt, encrypt } from '../crypto';
 import { db } from '../db';
 import { HttpError, notFound } from '../http';
 import { writeCafeGuestLine } from '../ai/tasks';
@@ -498,6 +498,56 @@ function guestVoiceData(guest: Guest) {
   };
 }
 
+type GuestRow = {
+  id: string;
+  email: string;
+  name: string;
+  synthetic: boolean;
+  birthDate: Date;
+  language: { myLanguage: string } | null;
+  personality: {
+    displayName: string;
+    personality: string;
+    interests: string[];
+    style: string;
+    humorLevel: number;
+    formality: number;
+    grammaticalGender: string;
+  } | null;
+  worldProfile: { city: string; country: string; bio: string } | null;
+};
+
+function sameWords(left: string[], right: string[]) {
+  return left.length === right.length && left.every((word, index) => word === right[index]);
+}
+
+function storedBio(value: string, plain: string) {
+  try {
+    return decrypt(value) === plain;
+  } catch {
+    return false;
+  }
+}
+
+/** True when the saved guest no longer matches the hardcoded voice, city, or words. */
+function guestDrifted(guest: Guest, row: GuestRow | undefined) {
+  if (!row?.worldProfile || !row.personality || !row.language) return true;
+  const born = row.birthDate.toISOString().slice(0, 10);
+  return row.name !== guest.name
+    || born !== guest.birth
+    || row.language.myLanguage !== guest.language
+    || row.personality.displayName !== guest.name
+    || row.personality.personality !== guest.personality
+    || row.personality.style !== guest.style
+    || row.personality.humorLevel !== guest.humor
+    || row.personality.formality !== guest.formality
+    || row.personality.grammaticalGender !== guest.gender
+    || !sameWords(row.personality.interests, guest.interests)
+    || row.worldProfile.city !== guest.city
+    || row.worldProfile.country !== guest.country
+    || !storedBio(row.worldProfile.bio, guest.bio);
+}
+
 async function paintGuests() {
   await deleteLooseCafeAccounts();
   await db.worldInvite.deleteMany({
@@ -509,33 +559,86 @@ async function paintGuests() {
       ],
     },
   });
-  const visible = new Set(GUESTS.map((g) => g.email));
+  const emails = GUESTS.map((guest) => guest.email);
+  const rows = await db.user.findMany({
+    where: { email: { in: emails } },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      synthetic: true,
+      birthDate: true,
+      language: { select: { myLanguage: true } },
+      personality: {
+        select: {
+          displayName: true,
+          personality: true,
+          interests: true,
+          style: true,
+          humorLevel: true,
+          formality: true,
+          grammaticalGender: true,
+        },
+      },
+      worldProfile: { select: { city: true, country: true, bio: true } },
+    },
+  });
+  const byEmail = new Map(rows.map((row) => [row.email, row]));
+  const ready: { guest: Guest; id: string; row?: GuestRow }[] = [];
   for (const guest of GUESTS) {
-    const id = await ensureGuest(guest);
-    if (!id) continue;
-    const inHour = !!(await db.worldConversation.findFirst({
-      where: { status: 'ACTIVE', OR: [{ userAId: id }, { userBId: id }] },
-      select: { id: true },
-    }));
-    const show = visible.has(guest.email) || inHour;
-    await paintGuestIdentity(id, guest);
-    const data = {
-      city: guest.city,
-      country: guest.country,
-      bio: encrypt(guest.bio),
-      ...(show
-        ? {
-            optedIn: true,
-            available: !inHour,
-            queuedAt: inHour ? null : new Date(),
-            lastSeenAt: new Date(),
-          }
-        : { optedIn: false, available: false, queuedAt: null as Date | null }),
-    };
-    await db.worldProfile.upsert({
-      where: { userId: id },
-      update: data,
-      create: { userId: id, inviteCode: inviteCode(), ...data },
+    const row = byEmail.get(guest.email);
+    if (row && !row.synthetic) continue;
+    if (row) ready.push({ guest, id: row.id, row });
+    else {
+      const id = await ensureGuest(guest);
+      if (id) ready.push({ guest, id });
+    }
+  }
+  const ids = ready.map((item) => item.id);
+  const active = ids.length
+    ? await db.worldConversation.findMany({
+        where: { status: 'ACTIVE', OR: [{ userAId: { in: ids } }, { userBId: { in: ids } }] },
+        select: { userAId: true, userBId: true },
+      })
+    : [];
+  const seatedIds = new Set<string>();
+  for (const hour of active) {
+    seatedIds.add(hour.userAId);
+    seatedIds.add(hour.userBId);
+  }
+  const free: string[] = [];
+  const seated: string[] = [];
+  for (const item of ready) {
+    if (guestDrifted(item.guest, item.row)) {
+      await paintGuestIdentity(item.id, item.guest);
+      const bio = encrypt(item.guest.bio);
+      await db.worldProfile.upsert({
+        where: { userId: item.id },
+        update: { city: item.guest.city, country: item.guest.country, bio },
+        create: {
+          userId: item.id,
+          inviteCode: inviteCode(),
+          city: item.guest.city,
+          country: item.guest.country,
+          bio,
+          optedIn: false,
+        },
+      });
+    }
+    if (seatedIds.has(item.id)) seated.push(item.id);
+    else free.push(item.id);
+  }
+  const now = new Date();
+  if (free.length) {
+    await db.worldProfile.updateMany({
+      where: { userId: { in: free } },
+      data: { optedIn: true, available: true, queuedAt: now, lastSeenAt: now },
+    });
+  }
+  if (seated.length) {
+    await db.worldProfile.updateMany({
+      where: { userId: { in: seated } },
+      data: { optedIn: true, available: false, queuedAt: null, lastSeenAt: now },
     });
   }
 }

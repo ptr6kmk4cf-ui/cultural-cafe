@@ -183,14 +183,18 @@ const LINK_STALE_MS = 90_000;
 /** Café lines are not kept. Connection setup for ended hours, and for people who left, is removed too. */
 async function ejectUserContent() {
   const iceCutoff = new Date(Date.now() - 90_000);
+  const signalWhere = {
+    OR: [{ conversation: { status: { not: 'ACTIVE' as const } } }, { type: 'ice', createdAt: { lt: iceCutoff } }],
+  };
+  const [message, signal, link] = await Promise.all([
+    db.worldMessage.findFirst({ select: { id: true } }),
+    db.worldSignal.findFirst({ where: signalWhere, select: { id: true } }),
+    db.worldPeerLink.findFirst({ where: { conversation: { status: { not: 'ACTIVE' } } }, select: { userId: true } }),
+  ]);
   await Promise.all([
-    db.worldMessage.deleteMany({}),
-    db.worldSignal.deleteMany({
-      where: {
-        OR: [{ conversation: { status: { not: 'ACTIVE' } } }, { type: 'ice', createdAt: { lt: iceCutoff } }],
-      },
-    }),
-    db.worldPeerLink.deleteMany({ where: { conversation: { status: { not: 'ACTIVE' } } } }),
+    message ? db.worldMessage.deleteMany({}) : Promise.resolve(),
+    signal ? db.worldSignal.deleteMany({ where: signalWhere }) : Promise.resolve(),
+    link ? db.worldPeerLink.deleteMany({ where: { conversation: { status: { not: 'ACTIVE' } } } }) : Promise.resolve(),
   ]);
   await ejectQuietLinks();
 }

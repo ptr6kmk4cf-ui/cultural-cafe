@@ -61,3 +61,61 @@ body {
 .cafe-request {
   animation: cafe-request-in 0.28s ease-out;
 }
+
+@keyframes cafe-live {
+  0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.65); }
+  100% { box-shadow: 0 0 0 8px rgba(52, 211, 153, 0); }
+}
+
+.online-board {
+  overflow: hidden;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(212, 168, 74, 0.28);
+  background:
+    radial-gradient(520px 160px at 0% 0%, rgba(176, 111, 28, 0.28), transparent 62%),
+    rgba(28, 22, 16, 0.94);
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.35);
+}
+
+.online-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.online-table th {
+  padding: 0.8rem 1rem;
+  background: rgba(18, 14, 10, 0.55);
+  color: #b7ad9a;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.online-table td {
+  padding: 0.9rem 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  vertical-align: middle;
+  overflow: hidden;
+  transition: background 0.15s ease;
+}
+
+.online-table tbody tr {
+  cursor: pointer;
+}
+
+.online-table tbody tr:hover td,
+.online-table tbody tr:focus-visible td {
+  background: rgba(176, 111, 28, 0.14);
+}
+
+.online-table tbody tr:focus-visible {
+  outline: none;
+}
+
+.online-live {
+  animation: cafe-live 1.8s ease-out infinite;
+}

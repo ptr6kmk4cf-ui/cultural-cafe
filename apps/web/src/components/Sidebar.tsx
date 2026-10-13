@@ -9,6 +9,7 @@ const NAV = [
   { href: '/app/world', label: 'Your profile', icon: '☺' },
   { href: '/app/world/spin', label: 'Spin at random', icon: '✺' },
   { href: '/app/world/map', label: 'Map', icon: '◎' },
+  { href: '/app/world/online', label: 'Who is online', icon: '●' },
   { href: '/app/conversations', label: 'Past contacts', icon: '✉' },
   { href: '/app/languages', label: 'Language', icon: 'A' },
   { href: '/app/photos', label: 'Photo', icon: '▣' },
@@ -25,7 +26,9 @@ export function Sidebar({ user }: { user: { name: string; email: string; plan: s
       ? 'Map'
       : path.startsWith('/app/world/spin')
         ? 'Spin at random'
-        : path.startsWith('/app/world/')
+        : path.startsWith('/app/world/online')
+          ? 'Who is online'
+          : path.startsWith('/app/world/')
           ? 'Café'
         : (NAV.find((n) => active(n.href))?.label ?? (path.startsWith('/app/admin') ? 'Admin' : 'Cultural Café'));
 

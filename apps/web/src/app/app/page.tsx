@@ -61,7 +61,7 @@ export default async function Home() {
               <h2 className="text-lg font-bold text-white">Meet someone</h2>
               <p className="mt-1 text-sm text-ink-300">
                 {profileReady
-                  ? 'Spin for a random person, or pick a city on the map.'
+                  ? 'Spin for a random person, pick a city on the map, or see who is online.'
                   : 'This opens after your profile.'}
               </p>
             </div>
@@ -70,6 +70,7 @@ export default async function Home() {
             <div className="flex flex-wrap gap-2">
               <Link href="/app/world/spin" className="btn-primary">Spin at random</Link>
               <Link href="/app/world/map" className="btn-secondary">Open the map</Link>
+              <Link href="/app/world/online" className="btn-secondary">Who is online</Link>
             </div>
           ) : (
             <span className="text-sm text-ink-400">After your profile</span>
