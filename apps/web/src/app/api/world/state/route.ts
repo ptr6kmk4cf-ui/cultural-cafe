@@ -9,6 +9,7 @@ import {
   pendingInvites,
   serializeConversation,
   serializeInvite,
+  cafeDisplayName,
   serializeProfile,
   touchPresenceIfStale,
   tryOfferFriendHours,
@@ -30,7 +31,7 @@ export const GET = route(async (req) => {
     }),
   ]);
   return json({
-    profile: serializeProfile(profile),
+    profile: serializeProfile(profile, await cafeDisplayName(user.id, user.name)),
     conversation: conv ? await serializeConversation(conv, user.id) : null,
     invites: await Promise.all(invites.map((i) => serializeInvite(i, user.id))),
     quota: { used, limit: PLAN_LIMITS[user.plan].worldConversationsPerDay },

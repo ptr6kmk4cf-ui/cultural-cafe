@@ -359,16 +359,17 @@ function cardFromUser(
     synthetic?: boolean;
     personality: { displayName: string | null; interests: string[] } | null;
     language: { myLanguage: string; preferredLanguages: string[] } | null;
-    worldProfile: { city: string; country: string; bio: string; portraitPhotoId: string | null; lastSeenAt: Date; available: boolean } | null;
+    worldProfile: { city: string; country: string; gender: string; bio: string; portraitPhotoId: string | null; lastSeenAt: Date; available: boolean } | null;
   },
 ) {
   const online = u.worldProfile ? Date.now() - u.worldProfile.lastSeenAt.getTime() < WORLD_ONLINE_MS : false;
   return {
     id: u.id,
-    name: firstName(u.personality?.displayName || u.name),
+    name: (u.personality?.displayName || u.name).trim() || 'Traveler',
     age: ageFromBirthDate(u.birthDate),
     city: u.worldProfile?.city ?? '',
     country: u.worldProfile?.country ?? '',
+    gender: cafeGender(u.worldProfile?.gender),
     bio: u.worldProfile ? decrypt(u.worldProfile.bio) : '',
     language: u.language?.myLanguage ?? 'en',
     languageLabel: languageName(u.language?.myLanguage ?? 'en'),
@@ -384,7 +385,7 @@ function cardFromUser(
 const CARD_INCLUDE = {
   personality: { select: { displayName: true, interests: true } },
   language: { select: { myLanguage: true, preferredLanguages: true } },
-  worldProfile: { select: { city: true, country: true, bio: true, portraitPhotoId: true, lastSeenAt: true, available: true, optedIn: true } },
+  worldProfile: { select: { city: true, country: true, gender: true, bio: true, portraitPhotoId: true, lastSeenAt: true, available: true, optedIn: true } },
 } as const;
 
 async function loadUserCard(userId: string) {
@@ -409,12 +410,23 @@ export async function cafePeerCard(userId: string, viewerId?: string) {
   return cardFromUser(u);
 }
 
-export function serializeProfile(p: WorldProfile) {
+export async function cafeDisplayName(userId: string, accountName: string) {
+  const personality = await db.personalityProfile.findUnique({ where: { userId }, select: { displayName: true } });
+  return (personality?.displayName || accountName).trim() || accountName.trim();
+}
+
+export function cafeGender(value: string | null | undefined): '' | 'man' | 'woman' {
+  return value === 'man' || value === 'woman' ? value : '';
+}
+
+export function serializeProfile(p: WorldProfile, name = '') {
   return {
     optedIn: p.optedIn,
     available: p.available,
+    name,
     city: p.city,
     country: p.country,
+    gender: cafeGender(p.gender),
     bio: decrypt(p.bio),
     portraitPhotoId: p.portraitPhotoId,
     inviteCode: p.inviteCode,
@@ -433,7 +445,7 @@ export async function lookupFriendInvite(code: string) {
   return {
     code: normalized,
     userId: profile.userId,
-    name: firstName(profile.user.personality?.displayName || profile.user.name),
+    name: (profile.user.personality?.displayName || profile.user.name).trim() || 'Traveler',
     city: profile.city,
     country: profile.country,
     inCafe: profile.optedIn,

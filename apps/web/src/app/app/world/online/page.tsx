@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useUi } from '@/components/UiLocale';
 import { Alert, Badge, Empty, PageHeader, Spinner } from '@/components/ui';
 import { api } from '@/lib/client';
 
@@ -9,6 +10,7 @@ type Person = {
   name: string;
   city: string;
   country: string;
+  gender?: '' | 'man' | 'woman';
   bio: string;
   languageLabel: string;
   portraitUrl: string | null;
@@ -27,6 +29,7 @@ function place(person: Person) {
 const PAGE_SIZE = 25;
 
 export default function OnlinePage() {
+  const { t } = useUi();
   const [people, setPeople] = useState<Person[] | null>(null);
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
@@ -69,7 +72,7 @@ export default function OnlinePage() {
         window.location.href = `/app/world/${result.conversation.id}`;
         return;
       }
-      setError(`${person.name} still has to accept. The table has not started.`);
+      setError(t('mustAccept', { name: person.name }));
     } catch (err) {
       setError((err as Error).message);
     }
@@ -79,21 +82,21 @@ export default function OnlinePage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Who is online"
-        subtitle="People in the café right now. Choose a name to sit with them."
+        title={t('online')}
+        subtitle={t('onlineSub')}
       />
       {error && <Alert kind="error">{error}</Alert>}
 
       <section ref={board} className="online-board scroll-mt-24" aria-label="People online">
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-5">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-200">In the café</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-200">{t('inTheCafe')}</p>
             <p className="mt-1 text-lg font-semibold text-white">
-              {people ? `${here.length} online` : 'Looking around the room…'}
+              {people ? t('onlineCount', { count: here.length }) : t('looking')}
             </p>
           </div>
           <label className="w-full sm:w-64">
-            <span className="sr-only">Find a name or city</span>
+            <span className="sr-only">{t('findPerson')}</span>
             <input
               className="input"
               value={query}
@@ -101,8 +104,8 @@ export default function OnlinePage() {
                 setQuery(event.target.value);
                 setPage(0);
               }}
-              placeholder="Name or city"
-              aria-label="Find a name or city"
+              placeholder={t('nameOrCity')}
+              aria-label={t('findPerson')}
             />
           </label>
         </div>
@@ -114,7 +117,7 @@ export default function OnlinePage() {
         )}
         {people && online.length === 0 && (
           <div className="p-4">
-            <Empty title={query.trim() ? 'No one online matches that' : 'Nobody is online right now'} />
+            <Empty title={query.trim() ? t('noMatch') : t('nobodyOnline')} />
           </div>
         )}
         {people && online.length > 0 && (
@@ -122,16 +125,16 @@ export default function OnlinePage() {
             <table className="online-table">
               <thead>
                 <tr>
-                  <th className="w-[52%] sm:w-[42%]">Person</th>
-                  <th className="w-[30%] sm:w-[22%]">City</th>
-                  <th className="hidden sm:table-cell sm:w-[20%]">Language</th>
-                  <th className="w-[18%]">Sit</th>
+                  <th className="w-[52%] sm:w-[42%]">{t('person')}</th>
+                  <th className="w-[30%] sm:w-[22%]">{t('cityCol')}</th>
+                  <th className="hidden sm:table-cell sm:w-[20%]">{t('languageCol')}</th>
+                  <th className="w-[18%]">{t('sit')}</th>
                 </tr>
               </thead>
               <tbody>
                 {shown.map((person) => {
                   const asking = busy === person.id;
-                  const label = person.guest ? `Sit with ${person.name}` : `Ask ${person.name}`;
+                  const label = person.guest ? t('sitWith', { name: person.name }) : t('askName', { name: person.name });
                   return (
                     <tr
                       key={person.id}
@@ -164,7 +167,8 @@ export default function OnlinePage() {
                           <span className="min-w-0">
                             <span className="flex flex-wrap items-center gap-2">
                               <span className="font-semibold text-white">{person.name}</span>
-                              {person.guest && <Badge tone="brand">Guest</Badge>}
+                              {(person.gender === 'man' || person.gender === 'woman') && <span className="text-xs text-ink-300">{t(person.gender)}</span>}
+                              {person.guest && <Badge tone="brand">{t('guest')}</Badge>}
                             </span>
                             {person.bio && <span className="mt-0.5 block max-w-xs truncate text-xs text-ink-300">{person.bio}</span>}
                           </span>
@@ -177,7 +181,7 @@ export default function OnlinePage() {
                       <td className="hidden text-sm text-ink-200 sm:table-cell">{person.languageLabel}</td>
                       <td>
                         <span className={person.guest ? 'btn-primary px-3 py-1.5 text-xs' : 'btn-secondary px-3 py-1.5 text-xs'}>
-                          {asking ? (person.guest ? 'Opening…' : 'Asking…') : person.guest ? 'Sit' : 'Ask'}
+                          {asking ? (person.guest ? t('opening') : t('asking')) : person.guest ? t('sit') : t('ask')}
                         </span>
                       </td>
                     </tr>
@@ -196,12 +200,12 @@ export default function OnlinePage() {
               <div className="flex gap-2">
                 {current > 0 && (
                   <button type="button" className="btn-secondary" onClick={() => showPage(current - 1)}>
-                    Previous
+                    {t('previous')}
                   </button>
                 )}
                 {current < pageCount - 1 && (
                   <button type="button" className="btn-primary" onClick={() => showPage(current + 1)}>
-                    Next
+                    {t('next')}
                   </button>
                 )}
               </div>

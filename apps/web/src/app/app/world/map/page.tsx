@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useUi } from '@/components/UiLocale';
 import { Alert, Badge, Empty, PageHeader, Spinner } from '@/components/ui';
 import { CafeMap } from '@/components/CafeMap';
 import { api } from '@/lib/client';
@@ -12,6 +13,7 @@ type Card = {
   name: string;
   city: string;
   country: string;
+  gender?: '' | 'man' | 'woman';
   bio: string;
   languageLabel: string;
   portraitUrl: string | null;
@@ -19,6 +21,7 @@ type Card = {
 };
 
 export default function MapPage() {
+  const { t } = useUi();
   const [people, setPeople] = useState<Card[] | null>(null);
   const [country, setCountry] = useState<string | null>(null);
   const [cityKey, setCityKey] = useState<string | null>(null);
@@ -84,7 +87,7 @@ export default function MapPage() {
         window.location.href = `/app/world/${result.conversation.id}`;
         return;
       }
-      setError(`${person.name} still has to accept. The table has not started.`);
+      setError(t('mustAccept', { name: person.name }));
     } catch (err) {
       setError((err as Error).message);
     }
@@ -93,7 +96,7 @@ export default function MapPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Map" subtitle="Tap a country, then a city, then a person." />
+      <PageHeader title={t('map')} subtitle={t('mapSub')} />
       {error && !city && <div id="map-error"><Alert kind="error">{error}</Alert></div>}
       <CafeMap selected={country} counts={counts} onSelect={pickCountry} />
 
@@ -153,13 +156,13 @@ export default function MapPage() {
                                   </span>
                                   <span>
                                     <span className="block text-lg font-semibold text-white underline decoration-white/30 underline-offset-4">{person.name}</span>
-                                    <span className="block text-xs text-ink-400">{city.label}, {country} · {person.languageLabel}</span>
-                                    {person.guest && <span className="mt-1 inline-flex"><Badge>Guest</Badge></span>}
+                                    <span className="block text-xs text-ink-400">{[person.gender === 'man' || person.gender === 'woman' ? t(person.gender) : '', `${city.label}, ${country}`, person.languageLabel].filter(Boolean).join(' · ')}</span>
+                                    {person.guest && <span className="mt-1 inline-flex"><Badge>{t('guest')}</Badge></span>}
                                   </span>
                                 </span>
                                 {person.bio && <span className="block text-sm text-ink-200">{person.bio}</span>}
                                 <span className={person.guest ? 'btn-primary w-full' : 'btn-secondary w-full'}>
-                                  {busy === person.id ? (person.guest ? 'Opening the table…' : 'Asking…') : person.guest ? `Sit with ${person.name}` : `Ask ${person.name}`}
+                                  {busy === person.id ? (person.guest ? t('opening') : t('asking')) : person.guest ? t('sitWith', { name: person.name }) : t('askName', { name: person.name })}
                                 </span>
                               </button>
                             ))}

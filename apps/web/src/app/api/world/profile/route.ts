@@ -3,18 +3,20 @@ import { requireUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { encrypt } from '@/lib/crypto';
 import { json, parseBody, route, HttpError } from '@/lib/http';
-import { getOrCreateProfile, newInviteCode, serializeProfile, touchPresence, tryOfferFriendHours } from '@/lib/services/world';
+import { cafeDisplayName, getOrCreateProfile, newInviteCode, serializeProfile, touchPresence, tryOfferFriendHours } from '@/lib/services/world';
 
 export const GET = route(async (req) => {
   const user = await requireUser(req);
-  return json({ profile: serializeProfile(await getOrCreateProfile(user.id)) });
+  return json({ profile: serializeProfile(await getOrCreateProfile(user.id), await cafeDisplayName(user.id, user.name)) });
 });
 
 const Body = z.object({
   optedIn: z.boolean().optional(),
   available: z.boolean().optional(),
+  name: z.string().trim().min(1).max(60).optional(),
   city: z.string().trim().max(80).optional(),
   country: z.string().trim().max(80).optional(),
+  gender: z.enum(['man', 'woman', '']).optional(),
   bio: z.string().trim().max(400).optional(),
   portraitPhotoId: z.string().nullable().optional(),
 });
@@ -33,8 +35,17 @@ export const PUT = route(async (req) => {
     data.available = b.available;
     if (!b.available) data.queuedAt = null;
   }
+  if (b.name !== undefined) {
+    await db.user.update({ where: { id: user.id }, data: { name: b.name } });
+    await db.personalityProfile.upsert({
+      where: { userId: user.id },
+      update: { displayName: b.name },
+      create: { userId: user.id, displayName: b.name },
+    });
+  }
   if (b.city !== undefined) data.city = b.city;
   if (b.country !== undefined) data.country = b.country;
+  if (b.gender !== undefined) data.gender = b.gender;
   if (b.bio !== undefined) data.bio = encrypt(b.bio);
   if (b.portraitPhotoId !== undefined) data.portraitPhotoId = b.portraitPhotoId;
   if (b.optedIn === false) {
@@ -49,5 +60,6 @@ export const PUT = route(async (req) => {
   if (b.available !== undefined) await touchPresence(user.id, b.available);
   if (b.optedIn) await tryOfferFriendHours(user.id, { includeInvitees: true });
   const profile = await getOrCreateProfile(user.id);
-  return json({ profile: serializeProfile(profile) });
+  const named = await db.user.findUnique({ where: { id: user.id }, select: { name: true } });
+  return json({ profile: serializeProfile(profile, await cafeDisplayName(user.id, named?.name || user.name)) });
 });

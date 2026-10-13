@@ -2,10 +2,12 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useUi } from '@/components/UiLocale';
 import { Alert, Field } from '@/components/ui';
 import { api } from '@/lib/client';
 
 export default function LoginPage() {
+  const { t } = useUi();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -34,17 +36,17 @@ export default function LoginPage() {
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <h1 className="text-xl font-bold text-white">Welcome back</h1>
+      <h1 className="text-xl font-bold text-white">{t('welcomeBack')}</h1>
       {error && <Alert kind="error">{error}</Alert>}
-      <Field label="Email">
+      <Field label={t('email')}>
         <input className="input" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
       </Field>
-      <Field label="Password">
+      <Field label={t('password')}>
         <input className="input" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
       </Field>
-      <button className="btn-primary w-full" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+      <button className="btn-primary w-full" disabled={busy}>{busy ? t('signingIn') : t('signIn')}</button>
       <p className="text-center text-sm text-ink-300">
-        New here? <Link className="text-brand-300 hover:underline" href={registerHref}>Create an account</Link>
+        {t('newHere')} <Link className="text-brand-300 hover:underline" href={registerHref}>{t('createAccount')}</Link>
       </p>
     </form>
   );

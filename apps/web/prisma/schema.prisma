@@ -382,6 +382,7 @@ model WorldProfile {
   lastSeenAt      DateTime @default(now())
   city            String   @default("")
   country         String   @default("")
+  gender          String   @default("")
   bio             String   @default("") // [enc]
   portraitPhotoId String?  @unique
   inviteCode      String?  @unique

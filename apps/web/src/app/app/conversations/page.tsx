@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useUi } from '@/components/UiLocale';
 import { Alert, Badge, Empty, PageHeader, Spinner } from '@/components/ui';
 import { api } from '@/lib/client';
 
@@ -30,6 +31,7 @@ function pastContacts(hours: CafeHour[]) {
 }
 
 export default function Conversations() {
+  const { t } = useUi();
   const [hours, setHours] = useState<CafeHour[] | null>(null);
   const [q, setQ] = useState('');
   const [error, setError] = useState('');
@@ -67,19 +69,18 @@ export default function Conversations() {
   return (
     <div>
       <PageHeader
-        title="Past contacts"
-        subtitle="People you already sat with."
-        actions={<Link href="/app/world/spin" className="btn-primary">Spin at random</Link>}
+        title={t('past')}
+        actions={<Link href="/app/world/spin" className="btn-primary">{t('spin')}</Link>}
       />
       <div className="mb-4">
-        <input className="input max-w-xs" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="input max-w-xs" placeholder={t('findPerson')} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       {error && <div className="mb-4"><Alert kind="error">{error}</Alert></div>}
       {!hours ? (
         <Spinner />
       ) : contacts.length === 0 ? (
-        <Empty title="No past contacts yet.">
-          <Link href="/app" className="text-brand-300 hover:underline">Start with your profile</Link>
+        <Empty title={t('noneYet')}>
+          <Link href="/app" className="text-brand-300 hover:underline">{t('yourProfile')}</Link>
         </Empty>
       ) : (
         <div className="card divide-y divide-white/5 p-0">
@@ -91,7 +92,7 @@ export default function Conversations() {
                   <span className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-brand-500/40 to-amber-700/40 font-semibold text-white">{(c.peer?.name ?? 'C')[0]}</span>
                   <div>
                     <p className="font-medium text-white">
-                      {c.peer?.name ?? 'Someone'}
+                      {c.peer?.name ?? t('someone')}
                       {where ? ` · ${where}` : ''}
                     </p>
                     <p className="text-xs text-ink-400">
@@ -102,7 +103,7 @@ export default function Conversations() {
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  {c.peer?.guest && <Badge>Guest</Badge>}
+                  {c.peer?.guest && <Badge>{t('guest')}</Badge>}
                   <span className="text-xs text-ink-400">{new Date(c.startedAt).toLocaleDateString()}</span>
                   <button
                     type="button"

@@ -6,6 +6,7 @@ export type WheelPerson = {
   name: string;
   city: string;
   country: string;
+  gender?: '' | 'man' | 'woman';
   bio: string;
   languageLabel: string;
   languages?: string[];

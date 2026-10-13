@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useUi } from '@/components/UiLocale';
 import { Alert } from '@/components/ui';
 import { api } from '@/lib/client';
 import { subscribeCafePoll, type RequestInvite } from '@/lib/request-notice';
 
 export function WaitingInvites() {
+  const { t } = useUi();
   const [invites, setInvites] = useState<RequestInvite[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
@@ -40,22 +42,20 @@ export function WaitingInvites() {
   return (
     <div className="space-y-3">
       {error && <Alert kind="error">{error}</Alert>}
-      {invites.length > 0 && <h2 className="font-semibold text-white">Still waiting</h2>}
+      {invites.length > 0 && <h2 className="font-semibold text-white">{t('stillWaiting')}</h2>}
       {invites.map((i) => (
         <div key={i.id} className="card flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="font-medium text-white">{i.peer?.name ?? 'Someone'}{i.peer?.city ? ` · ${i.peer.city}` : ''}</p>
+            <p className="font-medium text-white">{i.peer?.name ?? t('someone')}{i.peer?.city ? ` · ${i.peer.city}` : ''}</p>
             <p className="text-sm text-ink-300">
-              {i.iAccepted
-                ? 'You said yes. The table starts when they say yes.'
-                : 'Tap Accept to sit down, or Decline to skip them.'}
+              {i.iAccepted ? t('youSaidYes') : t('tapAccept')}
             </p>
           </div>
           <div className="flex gap-2">
             {!i.iAccepted && (
-              <button className="btn-primary" disabled={!!busy} onClick={() => respond(i.id, true)}>Accept</button>
+              <button className="btn-primary" disabled={!!busy} onClick={() => respond(i.id, true)}>{t('accept')}</button>
             )}
-            <button className="btn-secondary" disabled={!!busy} onClick={() => respond(i.id, false)}>Decline</button>
+            <button className="btn-secondary" disabled={!!busy} onClick={() => respond(i.id, false)}>{t('decline')}</button>
           </div>
         </div>
       ))}

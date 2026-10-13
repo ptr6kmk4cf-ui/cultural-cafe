@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode, type TransitionEvent } from 'react';
 import { languageName } from '@conversa/shared';
+import { useUi } from '@/components/UiLocale';
 import { Badge } from '@/components/ui';
 import { CafeMap } from '@/components/CafeMap';
 import { atlasCountryNames } from '@/lib/atlas';
@@ -54,6 +55,7 @@ export function FortuneWheel({
   onSit: (person: WheelPerson) => void;
   sitLabel: (person: WheelPerson) => string;
 }) {
+  const { t } = useUi();
   const [rotation, setRotation] = useState(0);
   const [animate, setAnimate] = useState(false);
   const [spinning, setSpinning] = useState(false);
@@ -127,16 +129,16 @@ export function FortuneWheel({
     dialogRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [reveal.step]);
 
-  if (people.length === 0) return null;
   const country = winner ? matchCountry(winner.country, atlasCountryNames) : null;
-  const alsoReads = winner
-    ? [...new Set((winner.languages ?? []).map((code) => languageName(code)))].filter((name) => name && name !== winner.languageLabel)
-    : [];
   const counts = useMemo(() => {
     const map = new Map<string, number>();
     if (country) map.set(country, 1);
     return map;
   }, [country]);
+  if (people.length === 0) return null;
+  const alsoReads = winner
+    ? [...new Set((winner.languages ?? []).map((code) => languageName(code)))].filter((name) => name && name !== winner.languageLabel)
+    : [];
   const place = winner ? (winner.city || country) : null;
   const zoomed = !!country && seen('country');
 
@@ -214,6 +216,7 @@ export function FortuneWheel({
                 </Slow>
                 <Slow on={seen('name')}>
                   <h3 className="text-3xl font-bold text-white">{winner.name}</h3>
+                  {(winner.gender === 'man' || winner.gender === 'woman') && <p className="text-sm text-ink-300">{t(winner.gender)}</p>}
                 </Slow>
                 <Slow on={seen('place')}>
                   <p className="text-sm text-ink-200">

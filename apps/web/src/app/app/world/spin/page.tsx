@@ -3,11 +3,13 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { FortuneWheel } from '@/components/FortuneWheel';
+import { useUi } from '@/components/UiLocale';
 import { Alert, Spinner } from '@/components/ui';
 import { api } from '@/lib/client';
 import type { WheelPerson } from '@/lib/fortune-wheel';
 
 export default function SpinPage() {
+  const { t } = useUi();
   const [people, setPeople] = useState<WheelPerson[] | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
@@ -27,7 +29,7 @@ export default function SpinPage() {
         window.location.href = `/app/world/${result.conversation.id}`;
         return;
       }
-      setError(`${person.name} still has to accept. The table has not started.`);
+      setError(t('mustAccept', { name: person.name }));
     } catch (err) {
       setError((err as Error).message);
     }
@@ -40,7 +42,7 @@ export default function SpinPage() {
       {!people && !error && <Spinner />}
       {people && people.length === 0 && (
         <p className="text-sm text-ink-300">
-          Add your city on <Link href="/app/world" className="text-brand-300 hover:underline">your profile</Link> first. Then the wheel can pick someone.
+          {t('wheelEmptyBefore')} <Link href="/app/world" className="text-brand-300 hover:underline">{t('profileLink')}</Link> {t('wheelEmptyAfter')}
         </p>
       )}
       {people && people.length > 0 && (
@@ -48,7 +50,7 @@ export default function SpinPage() {
           people={people}
           busyId={people.some((person) => person.id === busy) ? busy : ''}
           onSit={(person) => void sit(person)}
-          sitLabel={(person) => (person.guest ? `Sit with ${person.name}` : `Ask ${person.name}`)}
+          sitLabel={(person) => (person.guest ? t('sitWith', { name: person.name }) : t('askName', { name: person.name }))}
         />
       )}
     </div>

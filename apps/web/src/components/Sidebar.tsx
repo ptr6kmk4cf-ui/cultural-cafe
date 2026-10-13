@@ -3,39 +3,42 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
+import { useUi } from '@/components/UiLocale';
+import type { UiKey } from '@/lib/ui-copy';
 
-const NAV = [
-  { href: '/app', label: 'Home', icon: '⌂' },
-  { href: '/app/world', label: 'Your profile', icon: '☺' },
-  { href: '/app/world/spin', label: 'Spin at random', icon: '✺' },
-  { href: '/app/world/map', label: 'Map', icon: '◎' },
-  { href: '/app/world/online', label: 'Who is online', icon: '●' },
-  { href: '/app/conversations', label: 'Past contacts', icon: '✉' },
-  { href: '/app/languages', label: 'Language', icon: 'A' },
-  { href: '/app/photos', label: 'Photo', icon: '▣' },
-  { href: '/app/privacy', label: 'Account', icon: '⚿' },
+const NAV: { href: string; key: UiKey; icon: string }[] = [
+  { href: '/app', key: 'home', icon: '⌂' },
+  { href: '/app/world', key: 'yourProfile', icon: '☺' },
+  { href: '/app/world/spin', key: 'spin', icon: '✺' },
+  { href: '/app/world/map', key: 'map', icon: '◎' },
+  { href: '/app/world/online', key: 'online', icon: '●' },
+  { href: '/app/conversations', key: 'past', icon: '✉' },
+  { href: '/app/languages', key: 'language', icon: 'A' },
+  { href: '/app/photos', key: 'photo', icon: '▣' },
+  { href: '/app/privacy', key: 'account', icon: '⚿' },
 ];
 
 export function Sidebar({ user }: { user: { name: string; email: string; plan: string; role: string } }) {
   const path = usePathname();
+  const { t } = useUi();
   const [open, setOpen] = useState(false);
   const active = (href: string) => (href === '/app' || href === '/app/world' ? path === href : path.startsWith(href));
   const current = path.startsWith('/app/admin/links')
     ? 'Live links'
     : path.startsWith('/app/world/map')
-      ? 'Map'
+      ? t('map')
       : path.startsWith('/app/world/spin')
-        ? 'Spin at random'
+        ? t('spin')
         : path.startsWith('/app/world/online')
-          ? 'Who is online'
+          ? t('online')
           : path.startsWith('/app/world/')
-          ? 'Café'
-        : (NAV.find((n) => active(n.href))?.label ?? (path.startsWith('/app/admin') ? 'Admin' : 'Cultural Café'));
+          ? t('cafe')
+        : (NAV.find((n) => active(n.href)) ? t(NAV.find((n) => active(n.href))!.key) : (path.startsWith('/app/admin') ? 'Admin' : 'Cultural Café'));
 
   return (
     <>
       <header className="fixed inset-x-0 top-0 z-40 flex items-center gap-3 border-b border-white/5 bg-ink-900/95 px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur md:hidden">
-        <button className="rounded-lg bg-white/5 px-3 py-2 text-white" onClick={() => setOpen(!open)} aria-label="Menu" aria-expanded={open}>
+        <button className="rounded-lg bg-white/5 px-3 py-2 text-white" onClick={() => setOpen(!open)} aria-label={t('menu')} aria-expanded={open}>
           ☰
         </button>
         <span className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-amber-800 text-sm font-bold text-white">C</span>
@@ -58,7 +61,7 @@ export function Sidebar({ user }: { user: { name: string; email: string; plan: s
               className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition md:py-2 ${active(n.href) ? 'bg-gradient-to-r from-brand-500/20 to-amber-700/10 text-white' : 'text-ink-300 hover:bg-white/5 hover:text-white'}`}
             >
               <span className="w-4 text-center text-xs opacity-80">{n.icon}</span>
-              {n.label}
+              {t(n.key)}
             </Link>
           ))}
           {user.role === 'ADMIN' && (
@@ -92,7 +95,7 @@ export function Sidebar({ user }: { user: { name: string; email: string; plan: s
                 window.location.href = '/';
               }}
             >
-              Sign out
+              {t('signOut')}
             </button>
           </div>
         </div>

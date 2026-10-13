@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useUi } from '@/components/UiLocale';
 import { api } from '@/lib/client';
 import { publishCafePoll, requestsForMe, unheardRequestIds, type CafePoll, type RequestInvite } from '@/lib/request-notice';
 
@@ -54,6 +55,7 @@ export function playRequestChime() {
 }
 
 export function RequestNotice() {
+  const { t } = useUi();
   const [open, setOpen] = useState<RequestInvite[]>([]);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -154,16 +156,16 @@ export function RequestNotice() {
       <div className="pointer-events-auto w-full max-w-md space-y-2" role="status" aria-live="assertive">
         {error && <p className="rounded-xl bg-red-600 px-4 py-2 text-sm text-white">{error}</p>}
         {open.map((invite) => {
-          const name = invite.peer?.name ?? 'Someone';
+          const name = invite.peer?.name ?? t('someone');
           const city = invite.peer?.city?.trim();
           return (
             <article key={invite.id} className="cafe-request card shadow-2xl shadow-black/40">
-              <p className="font-semibold text-white">{name} wants to sit with you.</p>
-              <p className="mt-1 text-sm text-ink-300">{city ? `${city}. ` : ''}Accept to start the table, or decline to skip them.</p>
+              <p className="font-semibold text-white">{t('wantsToSit', { name })}</p>
+              <p className="mt-1 text-sm text-ink-300">{city ? `${city}. ` : ''}{t('acceptOrDecline')}</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <button className="btn-primary" disabled={!!busy} onClick={() => respond(invite.id, true)}>Accept</button>
-                <button className="btn-secondary" disabled={!!busy} onClick={() => respond(invite.id, false)}>Decline</button>
-                <button className="btn-ghost" disabled={!!busy} onClick={() => later(invite.id)}>Later</button>
+                <button className="btn-primary" disabled={!!busy} onClick={() => respond(invite.id, true)}>{t('accept')}</button>
+                <button className="btn-secondary" disabled={!!busy} onClick={() => respond(invite.id, false)}>{t('decline')}</button>
+                <button className="btn-ghost" disabled={!!busy} onClick={() => later(invite.id)}>{t('later')}</button>
               </div>
             </article>
           );

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { isRtl } from '@conversa/shared';
+import { useUi } from '@/components/UiLocale';
 import { Alert, Badge, Spinner, useToast } from '@/components/ui';
 import { ApiError, api } from '@/lib/client';
 import { deviceKeepsLines, forgetDeviceLines, loadDeviceLines, saveDeviceLines, setDeviceKeepsLines } from '@/lib/cafe-device';
@@ -25,12 +26,13 @@ type Conv = {
   remainingMs: number;
   offerer: boolean;
   ice: { iceServers: { urls: string; username?: string; credential?: string }[]; turnConfigured: boolean };
-  peer: { id: string; name: string; city: string; country: string; languageLabel: string; portraitUrl: string | null; guest?: boolean } | null;
+  peer: { id: string; name: string; city: string; country: string; gender?: '' | 'man' | 'woman'; languageLabel: string; portraitUrl: string | null; guest?: boolean } | null;
   prompt: { id: string; title: string; question: string } | null;
 };
 
 export default function WorldChat() {
   const { id } = useParams<{ id: string }>();
+  const { t } = useUi();
   const router = useRouter();
   const [conv, setConv] = useState<Conv | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -71,7 +73,8 @@ export default function WorldChat() {
     });
   }, []);
 
-  const ended = conv?.status !== 'ACTIVE' || left <= 0;
+  const ready = conv != null;
+  const ended = ready && (conv.status !== 'ACTIVE' || left <= 0);
   const guestHour = !!conv?.peer?.guest && conv.id === id;
   const { status: peer, send: sendPeer } = useWorldPeer(id, conv?.offerer, conv?.ice, !!conv && !ended && !guestHour, onRemote);
   const peerRef = useRef(peer);
@@ -126,7 +129,7 @@ export default function WorldChat() {
   }, [guestHour, id, ended]);
 
   useEffect(() => {
-    if (!id || ended) return;
+    if (!id || !ready || ended) return;
     const hourId = id;
     if (pendingRelease.current?.id === hourId) {
       window.clearTimeout(pendingRelease.current.timer);
@@ -171,7 +174,7 @@ export default function WorldChat() {
       }, 1500);
       pendingRelease.current = { id: hourId, timer };
     };
-  }, [id, ended, guestHour]);
+  }, [id, ready, ended, guestHour]);
 
   useEffect(() => {
     const t = setInterval(() => setLeft((ms) => Math.max(0, ms - 1000)), 1000);
@@ -427,18 +430,18 @@ export default function WorldChat() {
   }
 
   async function block() {
-    if (!conv?.peer || !confirm(`Block ${conv.peer.name}? They will not be able to find you in the Café.`)) return;
+    if (!conv?.peer || !confirm(t('blockConfirm', { name: conv.peer.name }))) return;
     await api('/api/world/block', { body: { userId: conv.peer.id } });
     router.push('/app/world');
   }
 
   async function report() {
     if (!conv?.peer) return;
-    const reason = prompt('Reason: harassment, spam, scam, underage_concern, or other', 'other');
+    const reason = prompt(t('reportReason'), 'other');
     if (!reason) return;
     try {
       await api('/api/world/report', { body: { userId: conv.peer.id, conversationId: id, reason, detail: '' } });
-      show('Report sent. An admin sees the reason, not this chat.');
+      show(t('reportSent'));
     } catch (e) {
       setError((e as Error).message);
     }
@@ -448,16 +451,16 @@ export default function WorldChat() {
   const mins = Math.floor(left / 60000);
   const secs = Math.floor((left % 60000) / 1000);
 
-  const answerButtons = !ended && (
+  const answerButtons = ready && !ended && (
     <div className="flex flex-wrap gap-2">
       <button className="btn-primary text-xs" disabled={busy} onClick={() => assist(false)}>
-        {drafting ? 'Writing…' : 'Suggest a reply'}
+        {drafting ? t('writing') : t('suggest')}
       </button>
       {auto ? (
-        <button className="btn-secondary text-xs" onClick={() => { rememberAuto(false); show('Answering off — you are writing again.'); }}>Stop automatic answering</button>
+        <button className="btn-secondary text-xs" onClick={() => { rememberAuto(false); show(t('answeringOff')); }}>{t('stopAuto')}</button>
       ) : (
         <button className="btn-secondary text-xs" disabled={busy} onClick={startAuto}>
-          Answer automatically
+          {t('answerAuto')}
         </button>
       )}
     </div>
@@ -473,25 +476,25 @@ export default function WorldChat() {
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-bold tracking-tight text-white">{conv?.peer ? peerName : 'Café chat'}</h1>
+          <h1 className="truncate text-2xl font-bold tracking-tight text-white">{conv?.peer ? peerName : t('cafeChat')}</h1>
           <p className="mt-0.5 text-sm text-ink-300">
-            {conv?.peer ? `${guestHour ? 'Café guest · ' : ''}${where || 'Somewhere'}` : 'Loading…'}
+            {conv?.peer ? [guestHour ? t('cafeGuest', { place: where || t('somewhere') }) : (where || t('somewhere')), conv.peer.gender === 'man' || conv.peer.gender === 'woman' ? t(conv.peer.gender) : ''].filter(Boolean).join(' · ') : t('loading')}
           </p>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Badge tone={ended ? 'amber' : 'green'}>{ended ? 'Ended' : `${mins}:${String(secs).padStart(2, '0')} left`}</Badge>
-        {guestHour && <Badge>Guest</Badge>}
-        {!ended && <button className="btn-secondary px-3 py-1.5 text-xs" onClick={end}>Leave the table</button>}
-        <button className="btn-ghost px-2 py-1 text-xs" onClick={block}>Block</button>
-        <button className="btn-ghost px-2 py-1 text-xs" onClick={report}>Report</button>
+        <Badge tone={!ready ? 'default' : ended ? 'amber' : 'green'}>{!ready ? t('loading') : ended ? t('ended') : t('timeLeft', { time: `${mins}:${String(secs).padStart(2, '0')}` })}</Badge>
+        {guestHour && <Badge>{t('guest')}</Badge>}
+        {ready && !ended && <button className="btn-secondary px-3 py-1.5 text-xs" onClick={end}>{t('leaveTable')}</button>}
+        <button className="btn-ghost px-2 py-1 text-xs" onClick={block}>{t('block')}</button>
+        <button className="btn-ghost px-2 py-1 text-xs" onClick={report}>{t('report')}</button>
         <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={toggleKeep}>
-          {keep ? 'Saved on this device' : 'Keep on this device'}
+          {keep ? t('savedDevice') : t('keepDevice')}
         </button>
       </div>
       {conv?.prompt && (
         <div className="rounded-2xl border border-brand-500/30 bg-brand-500/5 px-3 py-2">
-          <p className="text-[11px] uppercase tracking-wide text-brand-300">Topic · {conv.prompt.title}</p>
+          <p className="text-[11px] uppercase tracking-wide text-brand-300">{t('topic')} · {conv.prompt.title}</p>
           <p className="mt-0.5 text-base font-semibold text-white">{conv.prompt.question}</p>
           {!ended && (
             <button
@@ -499,7 +502,7 @@ export default function WorldChat() {
               className="btn-secondary mt-2 px-3 py-1.5 text-xs"
               onClick={() => setText(conv.prompt!.question)}
             >
-              Use this line
+              {t('useThisLine')}
             </button>
           )}
         </div>
@@ -509,25 +512,25 @@ export default function WorldChat() {
       <div className="card min-h-[8rem] flex-1 space-y-3 overflow-y-auto p-3" data-world-thread data-world-peer={guestHour ? 'open' : peer}>
         {msgs.length === 0 && (
           <p className="text-sm text-ink-400">
-            Write in your language. {conv?.peer?.name ? `${conv.peer.name}'s` : 'Their'} answer shows here in your language.
+            {t('writeHere', { name: conv?.peer?.name || t('them') })}
           </p>
         )}
         {msgs.map((m) => {
-          const who = m.mine ? 'You' : (conv?.peer?.name ?? 'Them');
+          const who = m.mine ? t('you') : (conv?.peer?.name ?? t('them'));
           const main = visibleLine(m.mine ? m.text : (m.translation || m.text));
           return (
             <div key={m.id} className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${m.mine ? 'ml-auto bg-brand-500/20 text-white' : 'mr-auto bg-white/5 text-ink-100'}`}>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-300">{who}</p>
               <p className="mt-0.5 text-base" dir={isRtl(m.mine ? m.language : m.translationLang || m.language) ? 'rtl' : 'auto'}>{main}</p>
-              {m.flagged && <p className="mt-1 text-[11px] text-amber-200">This asks for money or a phone number. You do not have to answer.</p>}
+              {m.flagged && <p className="mt-1 text-[11px] text-amber-200">{t('moneyWarning')}</p>}
             </div>
           );
         })}
         <div ref={bottom} />
       </div>
 
-      {ended ? (
-        <p className="text-sm text-ink-400">This table has closed. <a className="text-brand-300" href="/app/world">Back to the Café</a></p>
+      {!ready ? null : ended ? (
+        <p className="text-sm text-ink-400">{t('tableClosed')} <a className="text-brand-300" href="/app/world">{t('backCafe')}</a></p>
       ) : (
         <div className="relative z-10 space-y-2 bg-ink-900/95">
           {error && <Alert kind="error">{error}</Alert>}
@@ -537,7 +540,7 @@ export default function WorldChat() {
               className="input min-h-[3rem] flex-1 text-base"
               dir="auto"
               enterKeyHint="send"
-              placeholder={reading ? 'Reading their line…' : auto ? 'Answering is on. You can still write.' : 'Write in your language…'}
+              placeholder={reading ? t('reading') : auto ? t('answeringOn') : t('writePlaceholder')}
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
@@ -556,11 +559,11 @@ export default function WorldChat() {
               }}
               onClick={() => void send()}
             >
-              {sending ? 'Sending…' : 'Send'}
+              {sending ? t('sending') : t('send')}
             </button>
           </div>
           <p className="text-xs text-ink-400">
-            {peerName} reads a translation. {keep ? 'This table stays on this device.' : 'Nothing is saved unless you tap Keep on this device.'}
+            {t('readsTranslation', { name: peerName })} {keep ? t('staysOnDevice') : t('nothingSaved')}
           </p>
         </div>
       )}
