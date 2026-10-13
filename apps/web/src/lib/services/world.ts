@@ -1016,7 +1016,7 @@ export async function listPeople(viewerId: string) {
     },
     select: { id: true, name: true, birthDate: true, synthetic: true, ...CARD_INCLUDE },
     orderBy: { worldProfile: { lastSeenAt: 'desc' } },
-    take: 60,
+    take: 160,
   });
   return users.map(cardFromUser).sort((a, b) => Number(a.guest) - Number(b.guest));
 }

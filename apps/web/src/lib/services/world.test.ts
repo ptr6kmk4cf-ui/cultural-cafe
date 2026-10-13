@@ -120,16 +120,16 @@ test('Automatic answering at a guest table uses each hardcoded line once', () =>
   assert.equal(hardcodedTableReply(said, 'Another line.'), null);
 });
 
-test('Café guests step aside as real people join', () => {
-  assert.equal(guestSlots(0), 6);
-  assert.equal(guestSlots(2), 4);
-  assert.equal(guestSlots(6), 0);
-  assert.equal(guestSlots(9), 0);
-  assert.equal(guestSlots(-1), 6);
+test('The café keeps one hundred hardcoded people', () => {
+  assert.equal(guestSlots(0), 100);
+  assert.equal(guestSlots(2), 100);
+  assert.equal(guestSlots(9), 100);
   const emails = cafeGuestEmails();
-  assert.equal(emails.length, 6);
+  assert.equal(emails.length, 100);
   assert.equal(new Set(emails).size, emails.length);
   assert.ok(emails.every((email) => email.endsWith('@culturalcafe.invalid')));
+  assert.ok(emails.includes('guest.mei@culturalcafe.invalid'));
+  assert.ok(emails.includes('guest.hana@culturalcafe.invalid'));
 });
 
 test('WebRTC signal payloads keep ICE candidates in one batch', () => {

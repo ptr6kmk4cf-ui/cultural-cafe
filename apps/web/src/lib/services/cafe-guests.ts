@@ -6,10 +6,11 @@ import { db } from '../db';
 import { HttpError, notFound } from '../http';
 import { writeCafeGuestLine } from '../ai/tasks';
 import { contentWords, guestLineUsable } from '../table-reply';
+import { CROWD, type CrowdPerson } from '../cafe-crowd';
 import { tablePromptFor } from './cafe-topics';
 
-/** How many café seats stay open for guests. One real opted-in person closes one seat. */
-export const CAFE_GUEST_CAP = 6;
+/** Every hardcoded guest stays in the café. Real people are extra, not replacements. */
+export const CAFE_GUEST_CAP = 100;
 /** Old demo logins. They are not people waiting in the café. */
 export const CAFE_FIXTURE_EMAIL_SUFFIX = '@conversa.local';
 /** Leftover test accounts. They are deleted, not shown. */
@@ -26,9 +27,28 @@ export function looseCafeUserFilter() {
 const SYNC_MS = 20_000;
 const CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 
-export function guestSlots(realOptedIn: number, cap = CAFE_GUEST_CAP) {
-  const real = Number.isFinite(realOptedIn) ? Math.max(0, Math.floor(realOptedIn)) : 0;
-  return Math.max(0, cap - real);
+export function guestSlots(_realOptedIn: number, cap = CAFE_GUEST_CAP) {
+  return Math.max(0, cap);
+}
+
+function crowdGuest(person: CrowdPerson): Guest {
+  const hello = `Hello from ${person.city}. ${person.bio}`;
+  const reply = `In ${person.city} that is part of an ordinary day.`;
+  const bye = 'All right. We stop here. Take care.';
+  return {
+    email: `guest.${person.id}@culturalcafe.invalid`,
+    name: person.name,
+    birth: person.birth,
+    language: person.language,
+    city: person.city,
+    country: person.country,
+    interests: [...person.interests],
+    bio: person.bio,
+    hello,
+    reply,
+    bye,
+    english: { hello, reply, bye },
+  };
 }
 
 type GuestLine = { hello: string; reply: string; bye: string };
@@ -45,7 +65,7 @@ type Guest = GuestLine & {
   english: GuestLine;
 };
 
-const GUESTS: Guest[] = [
+const NAMED_GUESTS: Guest[] = [
   {
     email: 'guest.ines@culturalcafe.invalid',
     name: 'Inès',
@@ -155,6 +175,8 @@ const GUESTS: Guest[] = [
     },
   },
 ];
+
+const GUESTS: Guest[] = [...NAMED_GUESTS, ...CROWD.map(crowdGuest)];
 
 export function cafeGuestEmails() {
   return GUESTS.map((g) => g.email);
@@ -355,7 +377,7 @@ function inviteCode() {
 let lastSync = 0;
 let running: Promise<void> | null = null;
 
-/** Keeps a few labeled guests in the café, then hides them as real people opt in. */
+/** Keeps the hardcoded guests in the café and drops leftover test accounts. */
 export function syncCafeGuests() {
   if (running) return running;
   if (Date.now() - lastSync < SYNC_MS) return Promise.resolve();
@@ -417,15 +439,7 @@ async function paintGuests() {
       ],
     },
   });
-  const realOptedIn = await db.user.count({
-    where: {
-      synthetic: false,
-      NOT: looseCafeUserFilter(),
-      worldProfile: { is: { optedIn: true } },
-    },
-  });
-  const slots = guestSlots(realOptedIn);
-  const visible = new Set(GUESTS.slice(0, slots).map((g) => g.email));
+  const visible = new Set(GUESTS.map((g) => g.email));
   for (const guest of GUESTS) {
     const id = await ensureGuest(guest);
     if (!id) continue;
