@@ -54,11 +54,8 @@ export function InviteFriend({ code, compact = false }: { code: string; compact?
 
   return (
     <div className="card space-y-3">
-      <p className="text-xs uppercase tracking-wide text-ink-400">Optional</p>
-      <h2 className="text-lg font-semibold text-white">Or someone you already know</h2>
-      <p className="text-sm text-ink-300">
-        Send this link. They create an account, join the Café, and you both still tap accept. Nobody else sees the link.
-      </p>
+      <h2 className="text-lg font-semibold text-white">Someone you know</h2>
+      <p className="text-sm text-ink-300">Send this link. You both still accept.</p>
       <p className="break-all rounded-xl bg-black/30 px-3 py-2 text-xs text-ink-200">{url}</p>
       <div className="flex flex-wrap gap-2">
         <button type="button" className="btn-primary" onClick={share}>Share</button>

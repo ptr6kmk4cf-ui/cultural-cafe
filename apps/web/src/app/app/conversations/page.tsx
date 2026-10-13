@@ -68,7 +68,7 @@ export default function Conversations() {
     <div>
       <PageHeader
         title="Past contacts"
-        subtitle="People you already sat with. A new café session does not include them."
+        subtitle="People you already sat with."
         actions={<Link href="/app/world#meet" className="btn-primary">Meet someone</Link>}
       />
       <div className="mb-4">

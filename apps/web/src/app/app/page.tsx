@@ -24,7 +24,7 @@ export default async function Home() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-white">Hi {user.name}</h1>
-        <p className="mt-1 text-ink-300">Two steps. Open your profile, then meet someone.</p>
+        <p className="mt-1 text-ink-300">Save your profile, then meet someone.</p>
       </div>
 
       <ol className="space-y-3">
@@ -38,7 +38,7 @@ export default async function Home() {
               <p className="mt-1 text-sm text-ink-300">
                 {profileReady
                   ? `${profile?.city}${profile?.country ? `, ${profile.country}` : ''}. People see this before they sit with you.`
-                  : 'Add your city and a few words. This is what someone sees before they sit with you.'}
+                  : 'Add your city. People see it before they sit with you.'}
               </p>
               <p className="mt-2 text-xs text-ink-400">
                 Optional:{' '}
@@ -59,14 +59,14 @@ export default async function Home() {
               <h2 className="text-lg font-bold text-white">Meet someone</h2>
               <p className="mt-1 text-sm text-ink-300">
                 {profileReady
-                  ? 'Spin the wheel, tap a name, or pick a country on the map and then a city.'
-                  : 'This comes after your profile. Then you spin the wheel, tap a name, or pick a country and a city on the map.'}
+                  ? 'Spin for a random person, tap a name, or pick a city on the map.'
+                  : 'This opens after your profile.'}
               </p>
             </div>
           </div>
           {profileReady ? (
             <div className="flex flex-wrap gap-2">
-              <Link href="/app/world#wheel" className="btn-primary">Spin the wheel</Link>
+              <Link href="/app/world/spin" className="btn-primary">Spin at random</Link>
               <Link href="/app/world#meet" className="btn-secondary">Meet someone</Link>
               <Link href="/app/world/map" className="btn-secondary">Open the map</Link>
             </div>

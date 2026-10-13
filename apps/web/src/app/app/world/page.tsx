@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { CAFE_PROMPTS } from '@conversa/shared';
-import { FortuneWheel } from '@/components/FortuneWheel';
 import { InviteFriend } from '@/components/InviteFriend';
 import { Alert, Badge, Empty, Field, PageHeader, Spinner, useToast } from '@/components/ui';
 import { api } from '@/lib/client';
@@ -67,7 +66,11 @@ export default function WorldPage() {
     api('/api/photos').then((d) => setPhotos(d.photos.filter((p: Photo) => p.category !== 'PRIVATE'))).catch(() => {});
     function jump() {
       const id = window.location.hash.replace('#', '');
-      if (id === 'profile' || id === 'meet' || id === 'wheel') {
+      if (id === 'wheel') {
+        window.location.replace('/app/world/spin');
+        return;
+      }
+      if (id === 'profile' || id === 'meet') {
         const el = document.getElementById(id);
         if (!el) return;
         const top = el.getBoundingClientRect().top + window.scrollY - 96;
@@ -190,46 +193,25 @@ export default function WorldPage() {
     <div className="space-y-6">
       <PageHeader
         title="Café"
-        subtitle="Step 1 is your profile. Step 2 is where you meet someone."
+        subtitle="Save your profile, then tap a name. A table is timed."
       />
-      <nav className="grid gap-2 sm:grid-cols-2" aria-label="Steps">
-        <a href="#profile" className="card flex items-center gap-3 py-3">
-          <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-sm font-bold ${profileReady ? 'bg-emerald-500 text-white' : 'bg-brand-500 text-white'}`}>{profileReady ? '✓' : '1'}</span>
-          <span>
-            <span className="block text-sm font-semibold text-white">Your profile</span>
-            <span className="block text-xs text-ink-400">{profileReady ? 'Saved' : 'Add your city'}</span>
-          </span>
-        </a>
-        <a href="#meet" className="card flex items-center gap-3 py-3">
-          <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-sm font-bold ${profileReady ? 'bg-brand-500 text-white' : 'border border-white/20 text-ink-300'}`}>2</span>
-          <span>
-            <span className="block text-sm font-semibold text-white">Meet someone</span>
-            <span className="block text-xs text-ink-400">{profileReady ? 'Tap a name' : 'After your profile'}</span>
-          </span>
-        </a>
-      </nav>
       {error && <Alert kind="error">{error}</Alert>}
       {showFriendHint && (
-        <Alert kind="info">A friend invited you. Save your profile first. You will both still accept before the table starts.</Alert>
+        <Alert kind="info">A friend invited you. Save your profile first. You both still accept.</Alert>
       )}
-      <p className="text-xs text-ink-400">
-        The table is timed · location is what you type
-      </p>
-
 
       <section id="profile" className="card scroll-mt-24 space-y-4">
-        <p className="text-xs uppercase tracking-wide text-brand-300">Step 1</p>
         <h2 className="font-semibold text-white">Your profile</h2>
-        <p className="text-sm text-ink-300">People see your first name, city, and these words before they sit with you. A photo is optional.</p>
+        <p className="text-sm text-ink-300">People see your name, city, and these words. A photo is optional.</p>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="City (self-stated)">
+          <Field label="City">
             <input className="input text-base" autoComplete="address-level2" enterKeyHint="next" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Lisbon" />
           </Field>
-          <Field label="Country (self-stated)">
+          <Field label="Country">
             <input className="input text-base" autoComplete="country-name" enterKeyHint="next" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} placeholder="Portugal" />
           </Field>
         </div>
-        <Field label="A few words about you" hint="Shown to people you may meet. Do not include your address, phone or social handles.">
+        <Field label="A few words about you" hint="Leave out your address, phone, and social handles.">
           <textarea className="input min-h-20 text-base" value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} placeholder="I like late trains, street food and asking people what they are proud of in their city." />
         </Field>
         <div>
@@ -259,26 +241,14 @@ export default function WorldPage() {
 
       <section id="meet" className="scroll-mt-24 space-y-4">
         <div>
-          <p className="text-xs uppercase tracking-wide text-brand-300">Step 2</p>
-          <h2 className="mt-1 text-xl font-bold text-white">Tap a name, or spin</h2>
+          <h2 className="text-xl font-bold text-white">Meet someone</h2>
           <p className="mt-1 text-sm text-ink-300">
-            A guest opens the table right away. Someone else still has to say yes.{' '}
-            <Link href="/app/world/map" className="text-brand-300 hover:underline">Or pick a country on the map.</Link>
+            A guest sits right away. Someone else has to say yes.{' '}
+            <Link href="/app/world/spin" className="text-brand-300 hover:underline">Spin at random</Link>
+            {' or '}
+            <Link href="/app/world/map" className="text-brand-300 hover:underline">pick a city</Link>.
           </p>
         </div>
-        {profileReady && people && people.length > 0 && (
-          <div id="wheel" className="card scroll-mt-24">
-            <FortuneWheel
-              people={people}
-              busyId={people.some((person) => person.id === busy) ? busy : ''}
-              onSit={(person) => {
-                const found = people.find((item) => item.id === person.id);
-                if (found) void invite(found);
-              }}
-              sitLabel={(person) => (person.guest ? `Sit with ${person.name}` : `Ask ${person.name}`)}
-            />
-          </div>
-        )}
         {error && <Alert kind="error">{error}</Alert>}
         {!profileReady && <Alert kind="info">Add your city and tap Save profile. The names show up here after that.</Alert>}
         {profileReady && !people && <Spinner />}
@@ -364,8 +334,7 @@ export default function WorldPage() {
       </section>
 
       <div className="card">
-        <p className="text-xs uppercase tracking-wide text-brand-300">Table topics</p>
-        <p className="mt-1 text-sm text-ink-300">Each table gets one of these when you both sit down. A starting question, not a script.</p>
+        <p className="text-sm text-ink-300">A table starts with one of these questions.</p>
         <div className="mt-3 flex flex-wrap gap-2">
           {CAFE_PROMPTS.map((p) => (
             <button
@@ -394,7 +363,7 @@ export default function WorldPage() {
             {busy === 'topic' ? 'Saving…' : 'Add'}
           </button>
         </form>
-        <p className="mt-2 text-xs text-ink-400">Saved for a later table. It is not added to this list. Leave out names, links, and phone numbers.</p>
+        <p className="mt-2 text-xs text-ink-400">A topic you add is used on a later table. Leave out names and phone numbers.</p>
       </div>
 
       {state.profile?.inviteCode && <InviteFriend code={state.profile.inviteCode} />}

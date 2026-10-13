@@ -52,9 +52,7 @@ export default function LanguagesPage() {
         <div className="card space-y-4">
           <div>
             <span className="label">My languages</span>
-            <p className="mb-2 text-xs text-ink-400">
-              Languages you speak. They appear first in menus. All {LANGUAGES.length} stay available.
-            </p>
+            <p className="mb-2 text-xs text-ink-400">These show first. Every language stays available.</p>
             <LanguagePicker value={l.preferredLanguages} onChange={(preferredLanguages) => setL({ ...l, preferredLanguages })} />
           </div>
           <Field label="Language I read" hint="Their messages are translated into this language.">

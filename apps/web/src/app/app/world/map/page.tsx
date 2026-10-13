@@ -93,7 +93,7 @@ export default function MapPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Map" subtitle="Tap a country, then a city. The people from that city are listed there, and you sit down with one of them." />
+      <PageHeader title="Map" subtitle="Tap a country, then a city, then a person." />
       {error && !city && <div id="map-error"><Alert kind="error">{error}</Alert></div>}
       <CafeMap selected={country} counts={counts} onSelect={pickCountry} />
 
@@ -108,7 +108,6 @@ export default function MapPage() {
               Whole map
             </button>
           </div>
-          <p className="text-sm text-ink-300">Tap a city. The people from that city open underneath it.</p>
           {!people && !error && <Spinner />}
           {cities.length === 0 ? (
             <Empty title={`No cities are listed for ${country}`} />

@@ -26,11 +26,7 @@ export default function PrivacyAccount() {
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="card space-y-3">
           <h2 className="font-semibold text-white">Your data</h2>
-          <ul className="list-disc space-y-1 pl-4 text-sm text-ink-300">
-            <li>Café lines go between the two phones. We do not keep them. You can keep this table on your device if you want.</li>
-            <li>Your account, café card and language settings are stored so you can come back.</li>
-            <li>Photos are private, metadata-stripped, and only you can access them.</li>
-          </ul>
+          <p className="text-sm text-ink-300">Café lines are not kept. Your profile and language are, so you can come back. Photos stay private.</p>
           <a className="btn-secondary" href="/api/account/export">Download all my data (JSON)</a>
           <Link href="/legal/privacy" className="text-xs text-brand-300">Read the privacy policy →</Link>
         </div>
