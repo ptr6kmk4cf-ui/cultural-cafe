@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { LANGUAGES } from '@conversa/shared';
+import { LANGUAGES, languageName } from '@conversa/shared';
 import { BrandMark } from '@/components/BrandMark';
-import { getCurrentUser } from '@/lib/auth';
+import { LandingWheel } from '@/components/LandingWheel';
+import { ageFromBirthDate, getCurrentUser } from '@/lib/auth';
+import { cafeGuestRoster } from '@/lib/services/cafe-guests';
 
 const SHOWCASE = ['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'ar', 'ru', 'tr', 'pl', 'zh', 'ja', 'ko', 'hi', 'he', 'uk', 'vi', 'th', 'id'];
 
@@ -17,6 +19,17 @@ const FEATURES = [
 
 export default async function Landing() {
   if (await getCurrentUser()) redirect('/app');
+  const wheelPeople = cafeGuestRoster().map((guest) => ({
+    id: guest.id,
+    name: guest.name,
+    city: guest.city,
+    country: guest.country,
+    bio: guest.bio,
+    languageLabel: languageName(guest.language),
+    interests: guest.interests,
+    age: ageFromBirthDate(new Date(guest.birth)),
+    guest: true,
+  }));
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
       <nav className="flex items-center justify-between">
@@ -47,7 +60,11 @@ export default async function Landing() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2">
+      <section className="card">
+        <LandingWheel people={wheelPeople} />
+      </section>
+
+      <section className="mt-10 grid gap-4 md:grid-cols-2">
         {FEATURES.map((f) => (
           <Link key={f.t} href="/register" className="card block transition hover:border-brand-500/40">
             <h3 className="font-semibold text-white">{f.t}</h3>

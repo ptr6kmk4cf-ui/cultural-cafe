@@ -8,6 +8,7 @@ const NAV = [
   { href: '/app', label: 'Home', icon: '⌂' },
   { href: '/app/world#profile', label: 'Your profile', icon: '☺' },
   { href: '/app/world#meet', label: 'Meet someone', icon: '☕' },
+  { href: '/app/world#wheel', label: 'Spin', icon: '✺' },
   { href: '/app/world/map', label: 'Map', icon: '◎' },
   { href: '/app/conversations', label: 'Past contacts', icon: '✉' },
   { href: '/app/languages', label: 'Language', icon: 'A' },

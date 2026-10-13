@@ -149,6 +149,20 @@ export function cafeGuestEmails() {
   return GUESTS.map((g) => g.email);
 }
 
+/** Public guest cards for the front-page wheel. No email, no scripted lines. */
+export function cafeGuestRoster() {
+  return GUESTS.map((guest) => ({
+    id: guest.name,
+    name: guest.name,
+    city: guest.city,
+    country: guest.country,
+    bio: guest.bio,
+    language: guest.language,
+    interests: guest.interests,
+    birth: guest.birth,
+  }));
+}
+
 /** Later lines in a guest hour. Each one is a new topic, so the table does not repeat itself. */
 const FOLLOW: Record<string, { say: string; english: string }[]> = {
   'guest.ines@culturalcafe.invalid': [

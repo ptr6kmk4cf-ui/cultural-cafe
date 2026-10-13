@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { CAFE_PROMPTS } from '@conversa/shared';
+import { FortuneWheel } from '@/components/FortuneWheel';
 import { InviteFriend } from '@/components/InviteFriend';
 import { Alert, Badge, Empty, Field, PageHeader, Spinner, useToast } from '@/components/ui';
 import { api } from '@/lib/client';
@@ -66,7 +67,7 @@ export default function WorldPage() {
     api('/api/photos').then((d) => setPhotos(d.photos.filter((p: Photo) => p.category !== 'PRIVATE'))).catch(() => {});
     function jump() {
       const id = window.location.hash.replace('#', '');
-      if (id === 'profile' || id === 'meet') {
+      if (id === 'profile' || id === 'meet' || id === 'wheel') {
         const el = document.getElementById(id);
         if (!el) return;
         const top = el.getBoundingClientRect().top + window.scrollY - 96;
@@ -259,12 +260,25 @@ export default function WorldPage() {
       <section id="meet" className="scroll-mt-24 space-y-4">
         <div>
           <p className="text-xs uppercase tracking-wide text-brand-300">Step 2</p>
-          <h2 className="mt-1 text-xl font-bold text-white">Tap a name to sit down</h2>
+          <h2 className="mt-1 text-xl font-bold text-white">Tap a name, or spin</h2>
           <p className="mt-1 text-sm text-ink-300">
             A guest opens the table right away. Someone else still has to say yes.{' '}
             <Link href="/app/world/map" className="text-brand-300 hover:underline">Or pick a country on the map.</Link>
           </p>
         </div>
+        {profileReady && people && people.length > 0 && (
+          <div id="wheel" className="card scroll-mt-24">
+            <FortuneWheel
+              people={people}
+              busyId={people.some((person) => person.id === busy) ? busy : ''}
+              onSit={(person) => {
+                const found = people.find((item) => item.id === person.id);
+                if (found) void invite(found);
+              }}
+              sitLabel={(person) => (person.guest ? `Sit with ${person.name}` : `Ask ${person.name}`)}
+            />
+          </div>
+        )}
         {error && <Alert kind="error">{error}</Alert>}
         {!profileReady && <Alert kind="info">Add your city and tap Save profile. The names show up here after that.</Alert>}
         {profileReady && !people && <Spinner />}
