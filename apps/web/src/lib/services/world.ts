@@ -13,7 +13,7 @@ import { detectLanguageHeuristic, normalizeLang } from '../ai/lang';
 import { translateText } from '../ai/tasks';
 import { detectSensitiveRequest } from '../ai/safety';
 import { parseSignalBody, signalPhase } from '../world-signal';
-import { CAFE_FIXTURE_EMAIL_SUFFIX, syncCafeGuests } from './cafe-guests';
+import { isLooseCafeEmail, looseCafeUserFilter, syncCafeGuests } from './cafe-guests';
 
 export const WORLD_SESSION_MS = 60 * 60_000;
 export const WORLD_INVITE_MS = 10 * 60_000;
@@ -623,7 +623,7 @@ export async function joinQueue(user: AuthUser) {
       busy.add(p.toId);
     }
   }
-  const free = candidates.filter((c) => !busy.has(c.userId) && !c.user.email.endsWith(CAFE_FIXTURE_EMAIL_SUFFIX));
+  const free = candidates.filter((c) => !busy.has(c.userId) && !isLooseCafeEmail(c.user.email));
   const realPartner = free.find((c) => !c.user.synthetic);
   let partner = realPartner;
   if (!partner) {
@@ -631,7 +631,7 @@ export async function joinQueue(user: AuthUser) {
       where: {
         id: { not: user.id },
         synthetic: false,
-        email: { not: { endsWith: CAFE_FIXTURE_EMAIL_SUFFIX } },
+        NOT: looseCafeUserFilter(),
         worldProfile: { is: { optedIn: true } },
       },
     });
@@ -1011,7 +1011,7 @@ export async function listPeople(viewerId: string) {
   const users = await db.user.findMany({
     where: {
       id: { not: viewerId, notIn: [...skip] },
-      email: { not: { endsWith: CAFE_FIXTURE_EMAIL_SUFFIX } },
+      NOT: looseCafeUserFilter(),
       worldProfile: { optedIn: true },
     },
     select: { id: true, name: true, birthDate: true, synthetic: true, ...CARD_INCLUDE },

@@ -10,8 +10,19 @@ import { tablePromptFor } from './cafe-topics';
 
 /** How many café seats stay open for guests. One real opted-in person closes one seat. */
 export const CAFE_GUEST_CAP = 6;
-/** Seeded demo logins. They are not people waiting in the café, and a visit removes them from it. */
+/** Old demo logins. They are not people waiting in the café. */
 export const CAFE_FIXTURE_EMAIL_SUFFIX = '@conversa.local';
+/** Leftover test accounts. They are deleted, not shown. */
+export const LOOSE_CAFE_EMAIL_SUFFIXES = ['@conversa.local', '@culturalcafe.test'] as const;
+
+export function isLooseCafeEmail(email: string) {
+  const value = email.toLowerCase();
+  return LOOSE_CAFE_EMAIL_SUFFIXES.some((suffix) => value.endsWith(suffix));
+}
+
+export function looseCafeUserFilter() {
+  return { OR: LOOSE_CAFE_EMAIL_SUFFIXES.map((suffix) => ({ email: { endsWith: suffix } })) };
+}
 const SYNC_MS = 20_000;
 const CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 
@@ -357,24 +368,59 @@ export function syncCafeGuests() {
   return running;
 }
 
-async function paintGuests() {
-  await db.worldProfile.updateMany({
-    where: { user: { synthetic: false, email: { endsWith: CAFE_FIXTURE_EMAIL_SUFFIX } } },
-    data: { optedIn: false, available: false, queuedAt: null },
+async function deleteLooseCafeAccounts() {
+  const loose = await db.user.findMany({
+    where: { synthetic: false, email: { endsWith: '@culturalcafe.test' } },
+    select: { id: true },
   });
+  if (!loose.length) return;
+  const ids = loose.map((person) => person.id);
+  await db.worldConversation.deleteMany({
+    where: { OR: [{ userAId: { in: ids } }, { userBId: { in: ids } }] },
+  });
+  await db.user.deleteMany({ where: { id: { in: ids } } });
+}
+
+async function paintGuestIdentity(id: string, guest: Guest) {
+  const birthDate = new Date(`${guest.birth}T00:00:00Z`);
+  const aboutMe = encrypt(guest.bio);
+  await db.user.update({ where: { id }, data: { name: guest.name, birthDate } });
+  await db.languageSettings.upsert({
+    where: { userId: id },
+    update: { myLanguage: guest.language, defaultReplyLanguage: guest.language, preferredLanguages: [guest.language, 'en'] },
+    create: { userId: id, myLanguage: guest.language, defaultReplyLanguage: guest.language, preferredLanguages: [guest.language, 'en'] },
+  });
+  await db.personalityProfile.upsert({
+    where: { userId: id },
+    update: { displayName: guest.name, aboutMe, interests: guest.interests },
+    create: {
+      userId: id,
+      displayName: guest.name,
+      aboutMe,
+      interests: guest.interests,
+      intentions: 'a café table about everyday life',
+      personality: 'warm, curious, not romantic',
+      style: 'natural',
+      flirtingLevel: 0,
+    },
+  });
+}
+
+async function paintGuests() {
+  await deleteLooseCafeAccounts();
   await db.worldInvite.deleteMany({
     where: {
       status: 'PENDING',
       OR: [
-        { from: { email: { endsWith: CAFE_FIXTURE_EMAIL_SUFFIX } } },
-        { to: { email: { endsWith: CAFE_FIXTURE_EMAIL_SUFFIX } } },
+        { from: looseCafeUserFilter() },
+        { to: looseCafeUserFilter() },
       ],
     },
   });
   const realOptedIn = await db.user.count({
     where: {
       synthetic: false,
-      email: { not: { endsWith: CAFE_FIXTURE_EMAIL_SUFFIX } },
+      NOT: looseCafeUserFilter(),
       worldProfile: { is: { optedIn: true } },
     },
   });
@@ -388,21 +434,24 @@ async function paintGuests() {
       select: { id: true },
     }));
     const show = visible.has(guest.email) || inHour;
-    const data = show
-      ? {
-          optedIn: true,
-          available: !inHour,
-          queuedAt: inHour ? null : new Date(),
-          lastSeenAt: new Date(),
-          city: guest.city,
-          country: guest.country,
-          bio: encrypt(guest.bio),
-        }
-      : { optedIn: false, available: false, queuedAt: null as Date | null };
+    await paintGuestIdentity(id, guest);
+    const data = {
+      city: guest.city,
+      country: guest.country,
+      bio: encrypt(guest.bio),
+      ...(show
+        ? {
+            optedIn: true,
+            available: !inHour,
+            queuedAt: inHour ? null : new Date(),
+            lastSeenAt: new Date(),
+          }
+        : { optedIn: false, available: false, queuedAt: null as Date | null }),
+    };
     await db.worldProfile.upsert({
       where: { userId: id },
       update: data,
-      create: { userId: id, inviteCode: inviteCode(), city: guest.city, country: guest.country, bio: encrypt(guest.bio), ...data },
+      create: { userId: id, inviteCode: inviteCode(), ...data },
     });
   }
 }

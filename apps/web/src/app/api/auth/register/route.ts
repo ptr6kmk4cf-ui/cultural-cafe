@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { ageFromBirthDate, createSession, hashPassword, setSessionCookie } from '@/lib/auth';
 import { HttpError, json, parseBody, route } from '@/lib/http';
 import { clientIp, rateLimit } from '@/lib/rate-limit';
+import { isLooseCafeEmail } from '@/lib/services/cafe-guests';
 import { claimFriendInvite, newInviteCode, normalizeInviteCode } from '@/lib/services/world';
 
 const Body = z.object({
@@ -21,6 +22,9 @@ export const POST = route(async (req) => {
   const birth = new Date(`${body.birthDate}T00:00:00Z`);
   if (Number.isNaN(birth.getTime()) || ageFromBirthDate(birth) < 18) {
     throw new HttpError(403, 'Cultural Café is only available to adults aged 18 or older.', 'underage');
+  }
+  if (isLooseCafeEmail(body.email)) {
+    throw new HttpError(400, 'Use your own email address.', 'loose_email');
   }
   if (await db.user.findUnique({ where: { email: body.email } })) {
     throw new HttpError(409, 'An account with this email already exists.', 'email_taken');

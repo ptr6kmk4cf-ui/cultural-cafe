@@ -133,19 +133,6 @@ async function main() {
   });
   console.log(`✓ demo user: ${demoEmail}`);
 
-  const worldPw = process.env.SEED_WORLD_PASSWORD || process.env.SEED_DEMO_PASSWORD || pw('SEED_WORLD_PASSWORD');
-  const travelers = [
-    { email: 'noor@conversa.local', name: 'Noor', language: 'ar', languages: ['ar', 'en'], city: 'Cairo', country: 'Egypt', interests: ['poetry', 'nile walks', 'photography'], bio: 'I walk along the Nile after work and collect first lines of songs.' },
-    { email: 'yuki@conversa.local', name: 'Yuki', language: 'ja', languages: ['ja', 'en'], city: 'Tokyo', country: 'Japan', interests: ['jazz kissaten', 'cycling', 'ceramics'], bio: 'Night-shift nurse. I know the best late ramen streets in Koenji.' },
-    { email: 'piotr@conversa.local', name: 'Piotr', language: 'pl', languages: ['pl', 'en'], city: 'Kraków', country: 'Poland', interests: ['mountains', 'bread', 'chess'], bio: 'I bake on Sundays and disappear into the Tatras when I can.' },
-    { email: 'amara@conversa.local', name: 'Amara', language: 'sw', languages: ['sw', 'en'], city: 'Nairobi', country: 'Kenya', interests: ['running', 'radio', 'markets'], bio: 'I run at dawn and hunt spices in Toi Market on Saturdays.' },
-    { email: 'lucia@conversa.local', name: 'Lucía', language: 'es', languages: ['es', 'en'], city: 'Mexico City', country: 'Mexico', interests: ['murales', 'comida callejera', 'cine'], bio: 'Architect. I will talk about tacos al pastor and brutalist buildings.' },
-  ];
-  for (const t of travelers) {
-    await upsertUser(t.email, t.name, worldPw, 'USER', { ...t, world: true });
-    console.log(`✓ world traveler: ${t.email} (${t.city})`);
-  }
-
   if (process.env.ADMIN_EMAIL) {
     await upsertUser(process.env.ADMIN_EMAIL.toLowerCase(), 'Admin', pw('SEED_ADMIN_PASSWORD'), 'ADMIN');
     console.log(`✓ admin user: ${process.env.ADMIN_EMAIL}`);

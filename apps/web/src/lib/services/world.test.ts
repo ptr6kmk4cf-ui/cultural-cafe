@@ -2,8 +2,15 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cafePromptFor, cafePromptFromPool } from '@conversa/shared';
 import { icePayload, parseSignalBody, signalPhase } from '../world-signal';
-import { cafeGuestEmails, guestFollowUp, guestSlots, hardcodedTableReply, nextHardcodedTableLine, scriptedGuestTurn } from './cafe-guests';
+import { cafeGuestEmails, guestFollowUp, guestSlots, hardcodedTableReply, isLooseCafeEmail, nextHardcodedTableLine, scriptedGuestTurn } from './cafe-guests';
 import { INVITE_CODE_LENGTH, firstName, friendInviteMessage, friendJoinPath, isInviteCode, newInviteCode, normalizeInviteCode } from './world';
+
+test('Old test accounts are not café people', () => {
+  assert.equal(isLooseCafeEmail('mei.chengdu@culturalcafe.test'), true);
+  assert.equal(isLooseCafeEmail('demo@conversa.local'), true);
+  assert.equal(isLooseCafeEmail('guest.mei@culturalcafe.invalid'), false);
+  assert.equal(isLooseCafeEmail('someone@gmail.com'), false);
+});
 
 test('World cards show a first name only', () => {
   assert.equal(firstName('Lucía Hernández'), 'Lucía');
