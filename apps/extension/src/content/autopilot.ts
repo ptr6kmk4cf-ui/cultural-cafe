@@ -64,6 +64,10 @@ export class AutopilotRunner {
         const last = snap?.messages.at(-1);
         if (!snap || !last || last.direction !== 'IN' || this.handled.get(t.threadId) === last.externalId) continue;
         this.handled.set(t.threadId, last.externalId);
+        if (this.handled.size > 200) {
+          const oldest = this.handled.keys().next().value;
+          if (oldest) this.handled.delete(oldest);
+        }
         let r: ActResult;
         try {
           r = await api<ActResult>('/api/autopilot/act', { kind: 'reply', platform: this.adapter.platformId, snapshot: snap });

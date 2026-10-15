@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
@@ -95,6 +95,8 @@ export function useToast(): [ReactNode, (msg: string, kind?: 'success' | 'error'
 
 export function CopyButton({ text }: { text: string }) {
   const [done, setDone] = useState(false);
+  const timer = useRef(0);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
   return (
     <button
       type="button"
@@ -102,7 +104,8 @@ export function CopyButton({ text }: { text: string }) {
       onClick={async () => {
         await navigator.clipboard.writeText(text);
         setDone(true);
-        setTimeout(() => setDone(false), 1200);
+        window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(() => setDone(false), 1200);
       }}
     >
       {done ? 'Copied' : 'Copy'}

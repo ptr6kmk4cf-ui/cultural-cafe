@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { ageFromBirthDate, createSession, hashPassword, setSessionCookie } from '@/lib/auth';
+import { parseIsoBirthDate } from '@/lib/birth-date';
 import { HttpError, json, parseBody, route } from '@/lib/http';
 import { clientIp, rateLimit } from '@/lib/rate-limit';
 import { isLooseCafeEmail } from '@/lib/services/cafe-guests';
@@ -19,8 +20,11 @@ const Body = z.object({
 export const POST = route(async (req) => {
   rateLimit(`register:${clientIp(req)}`, 10, 60 * 60_000);
   const body = await parseBody(req, Body);
+  if (!parseIsoBirthDate(body.birthDate)) {
+    throw new HttpError(400, 'That date is not a real day. Check the day, month, and year.', 'birth_invalid');
+  }
   const birth = new Date(`${body.birthDate}T00:00:00Z`);
-  if (Number.isNaN(birth.getTime()) || ageFromBirthDate(birth) < 18) {
+  if (ageFromBirthDate(birth) < 18) {
     throw new HttpError(403, 'Cultural Café is only available to adults aged 18 or older.', 'underage');
   }
   if (isLooseCafeEmail(body.email)) {

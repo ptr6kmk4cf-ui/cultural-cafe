@@ -401,6 +401,7 @@ export const DictationButton = forwardRef<
     liveGenRef.current += 1;
     listeningRef.current = false;
     heardRef.current = '';
+    chunksRef.current = [];
     releaseMic();
     setPhaseNow('idle');
   }
@@ -475,6 +476,7 @@ export const DictationButton = forwardRef<
     const rec = recorderRef.current;
     if (rec) rec.onstop = null;
     const blob = clipBlob();
+    chunksRef.current = [];
     const already = heardRef.current;
     const gen = liveGenRef.current;
     const base = baseRef.current;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useUi } from '@/components/UiLocale';
 
 function inviteMessage(url: string) {
@@ -11,10 +11,13 @@ export function InviteFriend({ code, compact = false }: { code: string; compact?
   const { t } = useUi();
   const [copied, setCopied] = useState(false);
   const [url, setUrl] = useState(`/join/${code}`);
+  const copiedTimer = useRef(0);
 
   useEffect(() => {
     setUrl(`${window.location.origin}/join/${code}`);
   }, [code]);
+
+  useEffect(() => () => window.clearTimeout(copiedTimer.current), []);
 
   const message = inviteMessage(url);
 
@@ -30,7 +33,8 @@ export function InviteFriend({ code, compact = false }: { code: string; compact?
       el.remove();
     }
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    window.clearTimeout(copiedTimer.current);
+    copiedTimer.current = window.setTimeout(() => setCopied(false), 2000);
   }
 
   async function share() {

@@ -21,6 +21,14 @@ function writeIds(key: string, ids: Set<string>) {
   sessionStorage.setItem(key, JSON.stringify([...ids]));
 }
 
+const MAX_IDS = 80;
+
+function keepRecent(ids: Set<string>, extra: string[] = []) {
+  for (const id of extra) ids.add(id);
+  if (ids.size <= MAX_IDS) return ids;
+  return new Set([...ids].slice(-MAX_IDS));
+}
+
 function audioContext() {
   const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Ctx) return null;
@@ -64,7 +72,7 @@ export function RequestNotice() {
   const waitingSound = useRef<string[]>([]);
 
   function remember(ids: string[]) {
-    for (const id of ids) heard.current.add(id);
+    heard.current = keepRecent(heard.current, ids);
     writeIds(HEARD_KEY, heard.current);
   }
 
@@ -143,7 +151,7 @@ export function RequestNotice() {
   }
 
   function later(id: string) {
-    hidden.current.add(id);
+    hidden.current = keepRecent(hidden.current, [id]);
     writeIds(HIDDEN_KEY, hidden.current);
     remember([id]);
     setOpen((current) => current.filter((invite) => invite.id !== id));

@@ -9,6 +9,8 @@ test('day month year become one calendar date, and 31 February is refused', () =
   assert.equal(daysInMonth(2025, 2), 28);
   assert.deepEqual(parseIsoBirthDate('1990-03-14'), { year: 1990, month: 3, day: 14 });
   assert.equal(parseIsoBirthDate('1990-02-31'), null);
+  assert.equal(parseIsoBirthDate('2008-02-31'), null);
+  assert.equal(parseIsoBirthDate('2009-02-29'), null);
 });
 
 test('age uses the calendar birthday, not a shifted local day', () => {

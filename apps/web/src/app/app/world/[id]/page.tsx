@@ -82,12 +82,6 @@ export default function WorldChat() {
   peerRef.current = peer;
   msgsRef.current = msgs;
 
-  async function refresh() {
-    const r = await api(`/api/world/conversations/${id}?messages=0`);
-    setConv(r.conversation);
-    setLeft(r.conversation.remainingMs);
-  }
-
   useEffect(() => {
     setKeep(deviceKeepsLines());
     const saved = loadDeviceLines(id);
@@ -126,10 +120,21 @@ export default function WorldChat() {
   }, [msgs]);
 
   useEffect(() => {
-    refresh().catch((e) => setError(e.message));
-    const t = setInterval(() => refresh().catch(() => {}), peer === 'open' ? 8000 : 4000);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancelled = false;
+    const pull = () =>
+      api(`/api/world/conversations/${id}?messages=0`).then((r) => {
+        if (cancelled) return;
+        setConv(r.conversation);
+        setLeft(r.conversation.remainingMs);
+      });
+    pull().catch((e) => {
+      if (!cancelled) setError((e as Error).message);
+    });
+    const t = setInterval(() => pull().catch(() => {}), peer === 'open' ? 8000 : 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
   }, [id, peer]);
 
   useEffect(() => {

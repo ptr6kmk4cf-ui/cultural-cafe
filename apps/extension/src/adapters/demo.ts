@@ -147,7 +147,10 @@ export const demoAdapter: SiteAdapter = {
       t = window.setTimeout(cb, 250);
     });
     mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-thread-id', 'data-unread'] });
-    return () => mo.disconnect();
+    return () => {
+      mo.disconnect();
+      clearTimeout(t);
+    };
   },
 
   markProfiles(marks) {

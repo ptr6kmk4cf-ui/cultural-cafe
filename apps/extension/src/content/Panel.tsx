@@ -49,7 +49,11 @@ export function Panel({ adapter }: { adapter: SiteAdapter }) {
       un();
     };
   }, [adapter, refresh, runner]);
-  useEffect(() => sessionStorage.setItem('conversa-open', open ? '1' : '0'), [open]);
+  useEffect(() => {
+    sessionStorage.setItem('conversa-open', open ? '1' : '0');
+    if (!open) runner.stop('Panel closed');
+  }, [open, runner]);
+  useEffect(() => () => runner.stop('Panel closed'), [runner]);
 
   async function emergencyStop() {
     runner.stop('EMERGENCY STOP');
@@ -76,7 +80,7 @@ export function Panel({ adapter }: { adapter: SiteAdapter }) {
             {status?.connected ? `${status.me?.user.name} · ${status.me?.user.plan}` : 'Not connected'} · {kind}
           </div>
         </div>
-        <button className="x" onClick={() => setOpen(false)} aria-label="Close">×</button>
+        <button className="x" onClick={() => { runner.stop('Panel closed'); setOpen(false); }} aria-label="Close">×</button>
       </div>
       <div className="tabs">
         <button className={`tab ${tab === 'assist' ? 'on' : ''}`} onClick={() => setTab('assist')}>Assistant</button>
@@ -221,8 +225,25 @@ function Openers({ adapter, profile, matchId }: { adapter: SiteAdapter; profile:
   }, [adapter, profile]);
 
   useEffect(() => {
-    gen();
-  }, [gen]);
+    let live = true;
+    setBusy(true);
+    setError('');
+    api('/api/profiles/openers', { platform: adapter.platformId, profile: { ...profile, photos: [] }, avoid: [] })
+      .then((r) => {
+        if (!live) return;
+        setDrafts(r.openers);
+        setMeta({ language: r.language, alreadyContacted: r.alreadyContacted, doNotContact: r.doNotContact });
+      })
+      .catch((e) => {
+        if (live) setError((e as Error).message);
+      })
+      .finally(() => {
+        if (live) setBusy(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [adapter, profile]);
 
   useEffect(() => {
     if (!inserted || !matchId) return;
@@ -304,13 +325,25 @@ function ChatView({ adapter, me }: { adapter: SiteAdapter; me: Me }) {
 
   // When the thread changes: reset, and sync history if this conversation is tracked (no AI call).
   useEffect(() => {
+    let live = true;
     setReply(null);
     setDrafts([]);
     setPhoto(null);
     setInfo('');
     const s = adapter.readThread();
-    if (!s) return;
-    api('/api/threads/lookup', { snapshot: s, track: false }).then((r) => setContact(r.contact)).catch(() => setContact(null));
+    if (!s) return () => {
+      live = false;
+    };
+    api('/api/threads/lookup', { snapshot: s, track: false })
+      .then((r) => {
+        if (live) setContact(r.contact);
+      })
+      .catch(() => {
+        if (live) setContact(null);
+      });
+    return () => {
+      live = false;
+    };
   }, [threadId, adapter]);
 
   useEffect(() => {

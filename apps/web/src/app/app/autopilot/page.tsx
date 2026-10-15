@@ -20,9 +20,19 @@ export default function Autopilot() {
       setS(r.settings);
     });
   useEffect(() => {
-    load();
-    const t = setInterval(load, 8000);
-    return () => clearInterval(t);
+    let cancelled = false;
+    const pull = () =>
+      api('/api/autopilot').then((r) => {
+        if (cancelled) return;
+        setD(r);
+        setS(r.settings);
+      });
+    pull();
+    const t = setInterval(pull, 8000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
   }, []);
   if (!d || !s) return <Spinner />;
 
