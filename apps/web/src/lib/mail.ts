@@ -1,7 +1,7 @@
-const FROM = process.env.SUPPORT_EMAIL || 'hello@culturalcafe.online';
+const FROM = process.env.SUPPORT_EMAIL || 'hello@mail.culturalcafe.online';
 
-/** Sends a plain café email. Resend in production; the terminal in local development. */
-export async function sendCafeEmail(opts: { to: string; subject: string; text: string }) {
+/** Sends a café email. Resend in production; the terminal in local development. */
+export async function sendCafeEmail(opts: { to: string; subject: string; text: string; html?: string }) {
   const key = process.env.RESEND_API_KEY || '';
   if (!key) {
     if (process.env.NODE_ENV === 'production') {
@@ -22,6 +22,7 @@ export async function sendCafeEmail(opts: { to: string; subject: string; text: s
       to: [opts.to],
       subject: opts.subject,
       text: opts.text,
+      html: opts.html,
     }),
   });
   if (!res.ok) {

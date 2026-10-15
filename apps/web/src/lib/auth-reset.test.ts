@@ -10,4 +10,5 @@ test('a password reset mail points at the token and does not invent an account',
   assert.match(mail.text, /Nathaly/);
   assert.match(mail.text, /culturalcafe.online\/reset\?token=/);
   assert.match(mail.text, /one hour/);
+  assert.match(mail.html, /href="https:\/\/culturalcafe\.online\/reset\?token=/);
 });

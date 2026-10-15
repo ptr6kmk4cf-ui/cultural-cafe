@@ -14,10 +14,21 @@ function cafeOrigin() {
   return new URL(process.env.APP_URL || (process.env.NODE_ENV === 'production' ? PRODUCTION_ORIGIN : 'http://localhost:3000')).origin;
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 export function resetMail(opts: { name: string; url: string }) {
+  const name = opts.name || 'there';
+  const url = opts.url;
   return {
     subject: 'Choose a new Cultural Café password',
-    text: `Hi ${opts.name},\n\nUse this link to choose a new password for Cultural Café:\n\n${opts.url}\n\nIt expires in one hour. If you did not ask for this, you can ignore this email.\n`,
+    text: `Hi ${name},\n\nUse this link to choose a new password for Cultural Café:\n\n${url}\n\nIt expires in one hour. If you did not ask for this, you can ignore this email.\n`,
+    html: `<p>Hi ${escapeHtml(name)},</p><p>Use this link to choose a new password for Cultural Café:</p><p><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p><p>It expires in one hour. If you did not ask for this, you can ignore this email.</p>`,
   };
 }
 
