@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { cookies } from 'next/headers';
 import type { NextRequest } from 'next/server';
 import type { SessionKind, User } from '@prisma/client';
+import { ageFromCalendarBirth } from './birth-date';
 import { db } from './db';
 import { randomToken, sha256 } from './crypto';
 import { discardFinishedWork } from './finished-work';
@@ -134,8 +135,5 @@ export async function destroySessionByToken(token: string) {
 }
 
 export function ageFromBirthDate(birth: Date, now = new Date()) {
-  let age = now.getFullYear() - birth.getFullYear();
-  const m = now.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--;
-  return age;
+  return ageFromCalendarBirth(birth, now);
 }
