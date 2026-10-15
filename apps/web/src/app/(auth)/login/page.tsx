@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useUi } from '@/components/UiLocale';
 import { Alert, Field } from '@/components/ui';
+import { keepBrowserLogin } from '@/lib/browser-login';
 import { api } from '@/lib/client';
 
 export default function LoginPage() {
@@ -26,6 +27,7 @@ export default function LoginPage() {
     setError('');
     try {
       await api('/api/auth/login', { body: { email, password } });
+      await keepBrowserLogin(email, password);
       const next = new URLSearchParams(window.location.search).get('next');
       window.location.href = next && next.startsWith('/') && !next.startsWith('//') ? next : '/app';
     } catch (err) {
@@ -35,15 +37,36 @@ export default function LoginPage() {
   }
 
   return (
-    <form onSubmit={submit} className="space-y-4">
+    <form onSubmit={submit} autoComplete="on" className="space-y-4">
       <h1 className="text-xl font-bold text-white">{t('welcomeBack')}</h1>
       {error && <Alert kind="error">{error}</Alert>}
       <Field label={t('email')}>
-        <input className="input" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input
+          className="input"
+          id="login-email"
+          name="email"
+          type="email"
+          autoComplete="username"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
       </Field>
       <Field label={t('password')}>
-        <input className="input" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+        <input
+          className="input"
+          id="login-password"
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
       </Field>
+      <p className="text-right text-sm">
+        <Link className="text-brand-300 hover:underline" href="/forgot">{t('forgotPassword')}</Link>
+      </p>
       <button className="btn-primary w-full" disabled={busy}>{busy ? t('signingIn') : t('signIn')}</button>
       <p className="text-center text-sm text-ink-300">
         {t('newHere')} <Link className="text-brand-300 hover:underline" href={registerHref}>{t('createAccount')}</Link>

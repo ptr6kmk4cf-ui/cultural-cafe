@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useUi } from '@/components/UiLocale';
 import { Alert, Field } from '@/components/ui';
+import { keepBrowserLogin } from '@/lib/browser-login';
 import { api } from '@/lib/client';
 
 export default function RegisterPage() {
@@ -29,6 +30,7 @@ export default function RegisterPage() {
     setError('');
     try {
       await api('/api/auth/register', { body: { ...f, inviteCode: inviteCode || undefined } });
+      await keepBrowserLogin(f.email, f.password, f.name);
       window.location.href = inviteCode ? '/app/world?from=friend' : '/app?welcome=1';
     } catch (err) {
       setError((err as Error).message);
@@ -37,21 +39,21 @@ export default function RegisterPage() {
   }
 
   return (
-    <form onSubmit={submit} className="space-y-4">
+    <form onSubmit={submit} autoComplete="on" className="space-y-4">
       <h1 className="text-xl font-bold text-white">{t('createYourAccount')}</h1>
       {inviteCode && <Alert kind="info">{t('friendInvited')}</Alert>}
       {error && <Alert kind="error">{error}</Alert>}
       <Field label={t('firstName')}>
-        <input className="input" required maxLength={60} value={f.name} onChange={set('name')} />
+        <input className="input" id="signup-name" name="name" autoComplete="given-name" required maxLength={60} value={f.name} onChange={set('name')} />
       </Field>
       <Field label={t('email')}>
-        <input className="input" type="email" autoComplete="email" required value={f.email} onChange={set('email')} />
+        <input className="input" id="signup-email" name="email" type="email" autoComplete="username" required value={f.email} onChange={set('email')} />
       </Field>
       <Field label={t('password')} hint={t('passwordHint')}>
-        <input className="input" type="password" autoComplete="new-password" minLength={10} required value={f.password} onChange={set('password')} />
+        <input className="input" id="signup-password" name="password" type="password" autoComplete="new-password" minLength={10} required value={f.password} onChange={set('password')} />
       </Field>
       <Field label={t('birthDate')} hint={t('birthHint')}>
-        <input className="input" type="date" required value={f.birthDate} onChange={set('birthDate')} />
+        <input className="input" id="signup-birth" name="bday" type="date" autoComplete="bday" required value={f.birthDate} onChange={set('birthDate')} />
       </Field>
       <label className="flex items-start gap-2 text-sm text-ink-200">
         <input type="checkbox" className="mt-1" checked={f.confirmAdult} onChange={set('confirmAdult')} required />

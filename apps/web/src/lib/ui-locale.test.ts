@@ -23,4 +23,6 @@ test('a missing translation stays in English and keeps names', () => {
   assert.match(ui('en', 'listening'), /Your words appear/);
   assert.equal(ui('en', 'typing'), 'Typing');
   assert.equal(ui('en', 'stopSpeak'), 'Stop');
+  assert.match(ui('zz', 'forgotPassword'), /Forgot/);
+  assert.match(ui('en', 'resetSent'), /email/);
 });

@@ -11,7 +11,7 @@ export default function Privacy() {
       </p>
       <h2 className="text-lg font-semibold text-white">What we store</h2>
       <ul className="list-disc space-y-1 pl-5">
-        <li>Account data: email, name, date of birth (to confirm you are 18+), hashed password.</li>
+        <li>Account data: email, name, date of birth (to confirm you are 18+), hashed password. A reset link is emailed if you ask to choose a new password.</li>
         <li>Your café card: city, country, a few words, optional photo, language.</li>
         <li>Who met, when, and the table topic. Not the lines you wrote.</li>
         <li>Photos you upload, with location and other metadata removed.</li>

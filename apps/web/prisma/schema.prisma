@@ -124,8 +124,20 @@ model User {
   worldSignals     WorldSignal[]       @relation("WorldSignalFrom")
   worldPeerLinks   WorldPeerLink[]     @relation("WorldPeerLink")
   cafeTopicIdeas   CafeTopicIdea[]
+  passwordResets   PasswordReset[]
 
   @@index([synthetic])
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Session {
