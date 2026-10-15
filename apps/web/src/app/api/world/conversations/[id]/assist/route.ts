@@ -8,7 +8,7 @@ import { json, parseBody, route } from '@/lib/http';
 import { assertWorldAutomation } from '@/lib/plans';
 import { rateLimit } from '@/lib/rate-limit';
 import { tablePromptFor } from '@/lib/services/cafe-topics';
-import { draftEchoes, lineWorthReading, replyAboutTheirLine, replyReads } from '@/lib/table-reply';
+import { draftEchoes, lineWorthReading, replyAboutTheirLine, staysOnTable } from '@/lib/table-reply';
 import { requireParticipant, peerId, publicCard } from '@/lib/services/world';
 
 export const POST = route<{ id: string }>(async (req, { id }) => {
@@ -56,7 +56,7 @@ export const POST = route<{ id: string }>(async (req, { id }) => {
     auto: !!b.auto,
   });
   let text = r.text.trim();
-  if (!blocked && (draftEchoes(text, worth, topic) || !replyReads(text, [worth]))) {
+  if (!blocked && (draftEchoes(text, worth, topic) || !staysOnTable(text, worth, topic))) {
     text = replyAboutTheirLine({ latest: worth, topic, place });
   }
   return json({

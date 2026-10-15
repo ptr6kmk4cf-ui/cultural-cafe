@@ -16,4 +16,11 @@ test('a missing translation stays in English and keeps names', () => {
   assert.equal(ui('zz', 'wantsToSit', { name: 'Lindiwe' }), 'Lindiwe wants to sit with you.');
   assert.equal(ui('en', 'copyLink'), 'Copy link');
   assert.equal(ui('fr', 'reportReason'), 'Reason: harassment, spam, scam, underage_concern, or other');
+  assert.match(ui('en', 'readsTranslation', { name: 'Hana' }), /Hana/);
+  assert.equal(ui('zz', 'hearLine'), 'Hear');
+  assert.match(ui('en', 'askingMic'), /Waiting for Chrome/);
+  assert.equal(ui('en', 'allowMic'), 'Allow microphone');
+  assert.match(ui('en', 'listening'), /Your words appear/);
+  assert.equal(ui('en', 'typing'), 'Typing');
+  assert.equal(ui('en', 'stopSpeak'), 'Stop');
 });

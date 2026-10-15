@@ -35,7 +35,7 @@ export function guestLineUsable(text: string, humanLang: string, already: string
   if (!translationFitsLanguage(clean, humanLang)) return false;
   const norm = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
   if (already.some((previous) => norm(previous) === norm(clean))) return false;
-  return replyReads(clean, sources);
+  return staysOnTable(clean, sources[0] ?? '', sources[1] ?? '');
 }
 
 /** True when the reply uses a concrete word from what they said or from the table topic. */
@@ -47,6 +47,15 @@ export function replyReads(reply: string, sources: string[]): boolean {
   return false;
 }
 
+/** True when a line stays on what they just said or on the table topic. */
+export function staysOnTable(reply: string, latest: string, topic: string) {
+  const focus = lastSpokenLine(latest || '');
+  const subject = (topic || '').replace(/\s+/g, ' ').trim();
+  if (replyReads(reply, [focus])) return true;
+  if (replyReads(reply, [subject])) return true;
+  return contentWords(focus).length === 0 && contentWords(subject).length === 0;
+}
+
 /** The last thing they said that is worth answering. A goodbye is skipped. */
 export function lineWorthReading(lines: string[]): string {
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -54,6 +63,13 @@ export function lineWorthReading(lines: string[]): string {
     if (text && !isClosingLine(text)) return text;
   }
   return '';
+}
+
+/** The last sentence they typed. An older question still sitting in the box is ignored. */
+export function lastSpokenLine(raw: string) {
+  const clean = raw.replace(/\s+/g, ' ').trim();
+  const parts = clean.split(/(?<=[.!?])\s+/).filter(Boolean);
+  return parts.at(-1) ?? clean;
 }
 
 function titled(word: string) {
@@ -64,6 +80,74 @@ function topicName(topic: string) {
   const quoted = topic.match(/[“"]([^”"]+)[”"]/);
   if (quoted?.[1]) return quoted[1];
   return titled(contentWords(topic)[0] ?? '');
+}
+
+/** The short name of the table subject, so a reply can stay on it. */
+export function tableSubject(topic: string) {
+  return topicName(topic);
+}
+
+function editDistance(a: string, b: string) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = i - 1;
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cur = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+  }
+  return row[b.length];
+}
+
+function soundsLikeTopicWord(heard: string, wanted: string) {
+  if (heard === wanted) return false;
+  const max = wanted.length >= 6 ? 2 : 1;
+  if (heard.length < 4 || wanted.length < 4) return false;
+  if (heard[0] !== wanted[0]) return false;
+  if (Math.abs(heard.length - wanted.length) > max) return false;
+  return editDistance(heard, wanted) <= max;
+}
+
+function keepTokenCase(token: string, next: string) {
+  const match = token.match(/^(\P{L}*)(\p{L}+)(\P{L}*)$/u);
+  if (!match) return next;
+  const [, pre, word, post] = match;
+  const cased = word[0] === word[0].toLocaleUpperCase() ? titled(next) : next;
+  return `${pre}${cased}${post}`;
+}
+
+/** Fixes a speech-to-text near miss so the line stays on the table topic. Clear off-topic speech is left alone. */
+export function correctSpokenLine(text: string, topic: string, latest = '') {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  const subject = (topic || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return '';
+  if (!subject) return clean;
+  if (replyReads(clean, [subject])) return clean;
+  if (latest && staysOnTable(clean, latest, subject)) return clean;
+  const wanted = [
+    ...new Set(
+      [tableSubject(subject).toLowerCase(), ...contentWords(subject).filter((word) => word.length >= 6)].filter(
+        (word) => word.length >= 4,
+      ),
+    ),
+  ];
+  const tokens = clean.split(/\s+/);
+  let changed = false;
+  const next = tokens.map((token) => {
+    const heard = token.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+    const hit = wanted.find((word) => soundsLikeTopicWord(heard, word));
+    if (!hit) return token;
+    changed = true;
+    return keepTokenCase(token, hit);
+  });
+  const fixed = next.join(' ');
+  if (changed && replyReads(fixed, [subject])) return fixed;
+  return clean;
 }
 
 const WEAK_WORDS = new Set(['something', 'actually', 'makes', 'until', 'deserve', 'legitimate', 'only', 'suggestion', 'really']);

@@ -3,22 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { isRtl } from '@conversa/shared';
+import { DictationButton, HearButton, speakLine, stopSpeaking, unlockSpeech, type DictationHandle } from '@/components/CafeSpeech';
 import { useUi } from '@/components/UiLocale';
 import { Alert, Badge, Spinner, useToast } from '@/components/ui';
 import { ApiError, api } from '@/lib/client';
 import { deviceKeepsLines, forgetDeviceLines, loadDeviceLines, saveDeviceLines, setDeviceKeepsLines } from '@/lib/cafe-device';
+import { spokenLine, visibleLine } from '@/lib/speech';
 import { isClosingLine } from '@/lib/table-reply';
 import { useWorldPeer } from '@/lib/world-peer';
 
 type Msg = { id: string; seq?: number; mine: boolean; text: string; language: string; translation: string | null; translationLang: string | null; flagged: boolean; createdAt: string };
-
-/** Drops a pasted quote so an old line does not sit in front of the new one. */
-function visibleLine(raw: string) {
-  const text = raw.replace(/\s+/g, ' ').trim();
-  if (!text.startsWith('“') && !text.startsWith('"')) return text;
-  const last = text.split(' — ').pop()?.trim() ?? '';
-  return last || text;
-}
 type Conv = {
   id: string;
   status: string;
@@ -32,9 +26,10 @@ type Conv = {
 
 export default function WorldChat() {
   const { id } = useParams<{ id: string }>();
-  const { t } = useUi();
+  const { t, lang } = useUi();
   const router = useRouter();
   const [conv, setConv] = useState<Conv | null>(null);
+  const [myLang, setMyLang] = useState(lang);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState('');
   const [error, setError] = useState('');
@@ -48,6 +43,7 @@ export default function WorldChat() {
   const [toast, show] = useToast();
   const bottom = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+  const dictate = useRef<DictationHandle>(null);
   const msgsRef = useRef<Msg[]>([]);
   const disclosed = useRef(false);
   const lastHandled = useRef('');
@@ -60,6 +56,10 @@ export default function WorldChat() {
   const greeted = useRef('');
   const [keyboard, setKeyboard] = useState(0);
   const [keep, setKeep] = useState(false);
+  const [hear, setHear] = useState(false);
+  const [micPhase, setMicPhase] = useState<'idle' | 'asking' | 'listening'>('idle');
+  const knownHear = useRef(new Set<string>());
+  const heardRef = useRef('');
 
   const onRemote = useCallback((data: unknown) => {
     const m = data as Msg;
@@ -94,6 +94,27 @@ export default function WorldChat() {
     msgsRef.current = saved;
     setMsgs(saved);
     greeted.current = '';
+    heardRef.current = '';
+    knownHear.current = new Set(saved.map((m) => m.id));
+    try {
+      const on = sessionStorage.getItem(`cafe-hear:${id}`) === '1';
+      setHear(on);
+    } catch {
+      setHear(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    api('/api/me')
+      .then((d) => {
+        const mine = d.language?.myLanguage;
+        if (mine) setMyLang(mine);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    return () => stopSpeaking();
   }, [id]);
 
   useEffect(() => {
@@ -213,14 +234,18 @@ export default function WorldChat() {
       return [...without, mine];
     };
     if (guestHour) {
-      const history = place(msgsRef.current)
-        .filter((m) => !m.id.startsWith('local_'))
-        .slice(-12)
+      const prior = place(msgsRef.current)
+        .filter((m) => !m.id.startsWith('local_') && m.id !== mine.id)
+        .slice(-11)
         .map((m) => ({
           mine: m.mine,
           text: m.text.slice(0, 500),
           translation: (m.translation || '').slice(0, 500),
         }));
+      const history = [
+        ...prior,
+        { mine: true as const, text: raw.slice(0, 500), translation: (mine.translation || '').slice(0, 500) },
+      ];
       const reply = await api(`/api/world/conversations/${id}/guest`, { body: { history } });
       setMsgs((m) => {
         const next = place(m);
@@ -250,6 +275,7 @@ export default function WorldChat() {
     busyRef.current = true;
     setSending(true);
     setError('');
+    dictate.current?.hangUp();
     const localId = `local_${Date.now().toString(36)}`;
     setMsgs((m) => [...m, { id: localId, mine: true, text: body, language: '', translation: null, translationLang: null, flagged: false, createdAt: new Date().toISOString() }]);
     setText('');
@@ -353,6 +379,32 @@ export default function WorldChat() {
     }
   }
 
+  function rememberHear(on: boolean) {
+    setHear(on);
+    try {
+      sessionStorage.setItem(`cafe-hear:${id}`, on ? '1' : '0');
+    } catch {
+      /* Private browsing can block storage. */
+    }
+    if (on) {
+      knownHear.current = new Set(msgsRef.current.map((m) => m.id));
+      unlockSpeech();
+    } else {
+      stopSpeaking();
+    }
+  }
+
+  useEffect(() => {
+    if (!hear || ended) return;
+    const last = msgs.at(-1);
+    if (!last || last.mine || last.id.startsWith('local_') || last.id === heardRef.current) return;
+    if (knownHear.current.has(last.id)) return;
+    knownHear.current.add(last.id);
+    heardRef.current = last.id;
+    const line = spokenLine({ ...last, myLanguage: myLang });
+    if (line.text) speakLine(last.id, line.text, line.lang);
+  }, [hear, ended, msgs, myLang]);
+
   useEffect(() => {
     try {
       if (sessionStorage.getItem(`cafe-auto:${id}`) === '1') setAuto(true);
@@ -453,7 +505,7 @@ export default function WorldChat() {
 
   const answerButtons = ready && !ended && (
     <div className="flex flex-wrap gap-2">
-      <button className="btn-primary text-xs" disabled={busy} onClick={() => assist(false)}>
+      <button className="btn-primary text-xs" disabled={busy || !!last?.mine} onClick={() => assist(false)}>
         {drafting ? t('writing') : t('suggest')}
       </button>
       {auto ? (
@@ -462,6 +514,11 @@ export default function WorldChat() {
         <button className="btn-secondary text-xs" disabled={busy} onClick={startAuto}>
           {t('answerAuto')}
         </button>
+      )}
+      {hear ? (
+        <button className="btn-secondary text-xs" onClick={() => rememberHear(false)}>{t('muteReplies')}</button>
+      ) : (
+        <button className="btn-secondary text-xs" onClick={() => rememberHear(true)}>{t('hearReplies')}</button>
       )}
     </div>
   );
@@ -517,11 +574,20 @@ export default function WorldChat() {
         )}
         {msgs.map((m) => {
           const who = m.mine ? t('you') : (conv?.peer?.name ?? t('them'));
-          const main = visibleLine(m.mine ? m.text : (m.translation || m.text));
+          const heard = spokenLine({ ...m, myLanguage: myLang });
+          const main = heard.text;
           return (
             <div key={m.id} className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${m.mine ? 'ml-auto bg-brand-500/20 text-white' : 'mr-auto bg-white/5 text-ink-100'}`}>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-300">{who}</p>
               <p className="mt-0.5 text-base" dir={isRtl(m.mine ? m.language : m.translationLang || m.language) ? 'rtl' : 'auto'}>{main}</p>
+              <HearButton
+                id={m.id}
+                text={heard.text}
+                lang={heard.lang}
+                label={t('hearLine')}
+                stopLabel={t('stopHear')}
+                unsupported={t('speakUnsupported')}
+              />
               {m.flagged && <p className="mt-1 text-[11px] text-amber-200">{t('moneyWarning')}</p>}
             </div>
           );
@@ -534,13 +600,21 @@ export default function WorldChat() {
       ) : (
         <div className="relative z-10 space-y-2 bg-ink-900/95">
           {error && <Alert kind="error">{error}</Alert>}
+          {micPhase === 'asking' && !error && (
+            <Alert>
+              <p>{t('connectMic')}</p>
+              <p className="mt-2">{t('micCoachLock')}</p>
+              <p className="mt-1">{t('micCoachSet')}</p>
+              <p className="mt-1">{t('micCoachMac')}</p>
+            </Alert>
+          )}
           <div className="flex gap-2">
             <textarea
               ref={box}
               className="input min-h-[3rem] flex-1 text-base"
               dir="auto"
               enterKeyHint="send"
-              placeholder={reading ? t('reading') : auto ? t('answeringOn') : t('writePlaceholder')}
+              placeholder={micPhase === 'asking' ? t('askingMic') : micPhase === 'listening' ? t('listening') : reading ? t('reading') : auto ? t('answeringOn') : t('writePlaceholder')}
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
@@ -549,6 +623,24 @@ export default function WorldChat() {
                   send();
                 }
               }}
+            />
+            <DictationButton
+              ref={dictate}
+              lang={myLang}
+              value={text}
+              topic={conv?.prompt?.question ?? ''}
+              onChange={setText}
+              onPhase={setMicPhase}
+              onError={setError}
+              disabled={sending}
+              label={t('speak')}
+              allowLabel={t('allowMic')}
+              notNowLabel={t('notNow')}
+              typingLabel={t('typing')}
+              stopLabel={t('stopSpeak')}
+              unsupported={t('micUnsupported')}
+              denied={t('micDenied')}
+              boxRef={box}
             />
             <button
               type="button"

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { draftEchoes, guestLineUsable, isClosingLine, lineWorthReading, replyAboutTheirLine, replyReads } from './table-reply';
+import { correctSpokenLine, draftEchoes, guestLineUsable, isClosingLine, lastSpokenLine, lineWorthReading, replyAboutTheirLine, replyReads, staysOnTable } from './table-reply';
 
 test('a stock thank-you does not count as reading the table', () => {
   const stock = 'Thank you for telling me that. What is a normal day like in Lyon, France?';
@@ -8,6 +8,30 @@ test('a stock thank-you does not count as reading the table', () => {
   const said = 'In Lyon the evening smells like bread from the bakery on the corner.';
   assert.equal(replyReads(stock, [said, topic]), false);
   assert.equal(replyReads('The bakery bread in the evening is the part I am answering. Surfing here is something else.', [said, topic]), true);
+});
+
+test('speech auto-corrects a near miss onto the table topic', () => {
+  const surfing = 'What is “Surfing” like where you live?';
+  const food = 'What food from your town would you want a visitor to try first?';
+  assert.equal(correctSpokenLine('Serving is what we do on this coast.', surfing), 'Surfing is what we do on this coast.');
+  assert.equal(correctSpokenLine('I walk down to the river on a free afternoon.', food), 'I walk down to the river on a free afternoon.');
+  assert.equal(correctSpokenLine('The first thing a visitor should eat is grilled fish.', food), 'The first thing a visitor should eat is grilled fish.');
+});
+
+test('a line that leaves the table is not a stable answer', () => {
+  const topic = 'What food from your town would you want a visitor to try first?';
+  const latest = 'I walk down to the river on a free afternoon.';
+  assert.equal(staysOnTable('Tram 28 climbs so slowly you hear every bend.', latest, topic), false);
+  assert.equal(staysOnTable('I would walk that river path too.', latest, topic), true);
+  assert.equal(staysOnTable('The first thing I would want a visitor to eat is grilled fish.', latest, topic), true);
+});
+
+test('the last sentence is the line to answer, not an older question in the same box', () => {
+  assert.equal(
+    lastSpokenLine('What food from your town would you want a visitor to try first? The tram in my city is quiet.'),
+    'The tram in my city is quiet.',
+  );
+  assert.equal(lastSpokenLine('I walk down to the river.'), 'I walk down to the river.');
 });
 
 test('a guest goodbye is skipped so the draft answers the topic', () => {

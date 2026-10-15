@@ -96,6 +96,39 @@ test('Hassan answers the neighbour question instead of repeating himself', () =>
   assert.equal(again?.translation?.includes(stock), false);
 });
 
+test('A café guest stays on the table topic instead of the next unused fact', () => {
+  const topic = 'What food from your town would you want a visitor to try first?';
+  const hello = scriptedGuestTurn('guest.lena@culturalcafe.invalid', [], 'en', topic);
+  const answer = scriptedGuestTurn(
+    'guest.lena@culturalcafe.invalid',
+    [
+      { mine: false, text: hello?.text ?? '', translation: hello?.translation },
+      { mine: true, text: 'I walk down to the river on a free afternoon.' },
+    ],
+    'en',
+    topic,
+  );
+  assert.match(answer?.translation ?? '', /fish|lemon|lunch|visitor|eat/i);
+  assert.equal(/Tram 28|viewpoint|lights on/i.test(answer?.translation ?? ''), false);
+});
+
+test('A café guest answers the last sentence, not an older question still in the box', () => {
+  const answer = scriptedGuestTurn(
+    'guest.lena@culturalcafe.invalid',
+    [
+      { mine: false, text: 'Olá' },
+      {
+        mine: true,
+        text: 'What food from your town would you want a visitor to try first? The tram in my city is quiet.',
+      },
+    ],
+    'en',
+    'What food from your town would you want a visitor to try first?',
+  );
+  assert.match(answer?.translation ?? '', /Tram 28/);
+  assert.equal(/fish|brioche|visitor/i.test(answer?.translation ?? ''), false);
+});
+
 test('A guest hello is the written English line, not a translation', () => {
   const hello = scriptedGuestTurn('guest.lena@culturalcafe.invalid', [], 'en');
   assert.match(hello?.translation ?? '', /tram/i);

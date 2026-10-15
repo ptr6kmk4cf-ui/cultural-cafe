@@ -5,7 +5,7 @@ import { decrypt, encrypt } from '../crypto';
 import { db } from '../db';
 import { HttpError, notFound } from '../http';
 import { writeCafeGuestLine } from '../ai/tasks';
-import { contentWords, guestLineUsable } from '../table-reply';
+import { contentWords, guestLineUsable, lastSpokenLine, tableSubject } from '../table-reply';
 import { CROWD, type CrowdPerson } from '../cafe-crowd';
 import { VOICES, type GuestVoice } from '../cafe-voices';
 import { tablePromptFor } from './cafe-topics';
@@ -392,39 +392,41 @@ function alreadySaid(said: string[], line: string) {
   });
 }
 
-function focusSentence(latest: string) {
-  const clean = normLine(latest);
-  const parts = clean.split(/(?<=[.!?])\s+/).filter(Boolean);
-  return [...parts].reverse().find((part) => part.includes('?')) ?? parts.at(-1) ?? clean;
+function unusedFollow(guest: Guest, said: string[]) {
+  return followLines(guest.email).filter((item) => !alreadySaid(said, item.english) && !alreadySaid(said, item.say));
 }
 
-function pickVoiceLine(guest: Guest, latest: string, said: string[]) {
-  const unused = followLines(guest.email).filter((item) => !alreadySaid(said, item.english) && !alreadySaid(said, item.say));
-  const words = [...contentWords(focusSentence(latest)), ...contentWords(latest)];
-  const hit = unused.find((item) => words.some((word) => item.english.toLowerCase().includes(word)));
+function lineTouches(item: { say: string; english: string }, words: string[]) {
+  const hay = `${item.english} ${item.say}`.toLowerCase();
+  return words.some((word) => hay.includes(word));
+}
+
+function stayOnSubject(guest: Guest, topic: string, said: string[]) {
+  const subject = tableSubject(topic);
+  const english = subject
+    ? `In ${guest.city}, ${subject} is still the part I can describe. How is it where you live?`
+    : `I am still on that from ${guest.city}. What is it like on your street?`;
+  return { say: english, english: alreadySaid(said, english) ? `${english} Tell me one more thing about it.` : english };
+}
+
+function pickVoiceLine(guest: Guest, latest: string, said: string[], topic: string) {
+  const words = [...contentWords(lastSpokenLine(latest)), ...contentWords(topic)];
+  const hit = unusedFollow(guest, said).find((item) => lineTouches(item, words));
   if (hit) return hit;
-  if (unused[0]) return unused[0];
-  const interest = guest.interests[0] ?? 'the street';
-  const english = `I keep coming back to ${interest} in ${guest.city}. That is the part of the day I can actually describe.`;
-  return { say: english, english: alreadySaid(said, english) ? `${english} Ask me about a different hour.` : english };
+  return stayOnSubject(guest, topic, said);
 }
 
 function pickScriptedAnswer(guest: Guest, latest: string, said: string[], topic: string) {
   const bank = ANSWERS[guest.email] ?? [];
-  if (!bank.length) return pickVoiceLine(guest, latest, said);
-  const focus = focusSentence(latest);
-  for (const pool of [focus, latest]) {
-    const hit = bank.find((item) => item.test.test(pool) && !alreadySaid(said, item.english));
-    if (hit) return hit;
-  }
-  const word = contentWords(focus)[0] || contentWords(latest)[0] || '';
-  if (!word && topic) {
-    const hit = bank.find((item) => item.test.test(topic) && !alreadySaid(said, item.english));
-    if (hit) return hit;
-  }
-  const fact = followLines(guest.email).find((item) => !alreadySaid(said, item.english) && !alreadySaid(said, item.say));
-  if (fact) return { say: fact.say, english: fact.english };
-  return pickVoiceLine(guest, latest, said);
+  const focus = lastSpokenLine(latest);
+  const fromBank = (source: string) =>
+    bank.find((item) => source && item.test.test(source) && !alreadySaid(said, item.english));
+  const hit = fromBank(focus) || fromBank(topic);
+  if (hit) return hit;
+  const words = [...contentWords(focus), ...contentWords(topic)];
+  const overlap = unusedFollow(guest, said).find((item) => lineTouches(item, words));
+  if (overlap) return overlap;
+  return pickVoiceLine(guest, focus, said, topic);
 }
 
 function inviteCode() {
@@ -717,7 +719,7 @@ function packGuestLine(
 export function scriptedGuestTurn(email: string, history: GuestTurn[], humanLang = 'en', topic = '') {
   const guest = GUESTS.find((item) => item.email === email);
   if (!guest) return null;
-  const latest = [...history].reverse().find((turn) => turn.mine)?.text ?? '';
+  const latest = lastSpokenLine([...history].reverse().find((turn) => turn.mine)?.text ?? '');
   const said = history.filter((turn) => !turn.mine).flatMap((turn) => [turn.text, turn.translation ?? '']);
   const stop = !!latest && (detectStopRequest(latest) || detectSensitiveRequest(latest));
   let native = guest.hello;
@@ -743,7 +745,7 @@ export function scriptedGuestTurn(email: string, history: GuestTurn[], humanLang
 /** A spoken line when the model can write one. The written catalog is the backup. */
 async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[], humanLang: string, topic: string) {
   const scripted = scriptedGuestTurn(guest.email, turns, humanLang, topic);
-  const latest = [...turns].reverse().find((turn) => turn.mine)?.text ?? '';
+  const latest = lastSpokenLine([...turns].reverse().find((turn) => turn.mine)?.text ?? '');
   const stop = !!latest && (detectStopRequest(latest) || detectSensitiveRequest(latest));
   if (!scripted || stop) return scripted;
   const visible = turns.map((turn) => ({
@@ -769,7 +771,7 @@ async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[],
       topic,
       history: visible,
     });
-    const sources = latest ? [latest, topic] : [];
+    const sources = [latest, topic].filter(Boolean);
     if (!guestLineUsable(draft, humanLang, already, sources)) return scripted;
     return {
       text: draft,

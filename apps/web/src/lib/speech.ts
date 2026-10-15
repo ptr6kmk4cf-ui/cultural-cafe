@@ -1,0 +1,168 @@
+import { LANGUAGE_ALIASES, LANGUAGE_CODES } from '@conversa/shared';
+
+/** Region tags speechSynthesis understands. */
+const SPEECH_LOCALES: Record<string, string> = {
+  af: 'af-ZA',
+  sq: 'sq-AL',
+  am: 'am-ET',
+  ar: 'ar-SA',
+  hy: 'hy-AM',
+  az: 'az-AZ',
+  eu: 'eu-ES',
+  be: 'be-BY',
+  bn: 'bn-IN',
+  bs: 'bs-BA',
+  bg: 'bg-BG',
+  my: 'my-MM',
+  ca: 'ca-ES',
+  zh: 'zh-CN',
+  hr: 'hr-HR',
+  cs: 'cs-CZ',
+  da: 'da-DK',
+  nl: 'nl-NL',
+  en: 'en-US',
+  et: 'et-EE',
+  tl: 'fil-PH',
+  fi: 'fi-FI',
+  fr: 'fr-FR',
+  gl: 'gl-ES',
+  ka: 'ka-GE',
+  de: 'de-DE',
+  el: 'el-GR',
+  gu: 'gu-IN',
+  ht: 'ht-HT',
+  ha: 'ha-NG',
+  he: 'he-IL',
+  hi: 'hi-IN',
+  hu: 'hu-HU',
+  is: 'is-IS',
+  ig: 'ig-NG',
+  id: 'id-ID',
+  ga: 'ga-IE',
+  it: 'it-IT',
+  ja: 'ja-JP',
+  jv: 'jv-ID',
+  kn: 'kn-IN',
+  kk: 'kk-KZ',
+  km: 'km-KH',
+  ko: 'ko-KR',
+  ku: 'ku-TR',
+  ky: 'ky-KG',
+  lo: 'lo-LA',
+  lv: 'lv-LV',
+  lt: 'lt-LT',
+  lb: 'lb-LU',
+  mk: 'mk-MK',
+  mg: 'mg-MG',
+  ms: 'ms-MY',
+  ml: 'ml-IN',
+  mt: 'mt-MT',
+  mi: 'mi-NZ',
+  mr: 'mr-IN',
+  mn: 'mn-MN',
+  ne: 'ne-NP',
+  no: 'nb-NO',
+  ps: 'ps-AF',
+  fa: 'fa-IR',
+  pl: 'pl-PL',
+  pt: 'pt-BR',
+  pa: 'pa-IN',
+  ro: 'ro-RO',
+  ru: 'ru-RU',
+  sr: 'sr-RS',
+  si: 'si-LK',
+  sk: 'sk-SK',
+  sl: 'sl-SI',
+  so: 'so-SO',
+  es: 'es-ES',
+  sw: 'sw-KE',
+  sv: 'sv-SE',
+  tg: 'tg-TJ',
+  ta: 'ta-IN',
+  te: 'te-IN',
+  th: 'th-TH',
+  tr: 'tr-TR',
+  uk: 'uk-UA',
+  ur: 'ur-PK',
+  uz: 'uz-UZ',
+  vi: 'vi-VN',
+  cy: 'cy-GB',
+  xh: 'xh-ZA',
+  yi: 'yi',
+  yo: 'yo-NG',
+  zu: 'zu-ZA',
+};
+
+function baseCode(code: string | null | undefined) {
+  const raw = (code || '').trim().toLowerCase().replace(/_/g, '-');
+  const base = raw.split('-')[0] || '';
+  return LANGUAGE_ALIASES[base] || LANGUAGE_ALIASES[raw] || base;
+}
+
+/** BCP-47 tag for the café language, so the mic and speaker use the same tongue you read. */
+export function speechLocale(code: string | null | undefined, fallback = 'en'): string {
+  const raw = (code || '').trim().toLowerCase().replace(/_/g, '-');
+  const mapped = baseCode(raw) || fallback;
+  const region = raw.split('-')[1] || '';
+  if (region.length === 2 && (LANGUAGE_CODES as readonly string[]).includes(mapped)) {
+    return `${mapped}-${region.toUpperCase()}`;
+  }
+  return SPEECH_LOCALES[mapped] || SPEECH_LOCALES[baseCode(fallback)] || 'en-US';
+}
+
+/** Drops a pasted quote so an old line does not sit in front of the new one. */
+export function visibleLine(raw: string) {
+  const text = raw.replace(/\s+/g, ' ').trim();
+  if (!text.startsWith('“') && !text.startsWith('"')) return text;
+  const last = text.split(' — ').pop()?.trim() ?? '';
+  return last || text;
+}
+
+/** The words this person should hear, in a language they can follow. */
+export function spokenLine(m: {
+  mine: boolean;
+  text: string;
+  language?: string | null;
+  translation?: string | null;
+  translationLang?: string | null;
+  myLanguage: string;
+}) {
+  const original = visibleLine(m.text);
+  if (m.mine) return { text: original, lang: m.language || m.myLanguage };
+  const translated = visibleLine(m.translation || '');
+  if (translated) return { text: translated, lang: m.translationLang || m.myLanguage };
+  return { text: original, lang: m.language || m.myLanguage };
+}
+
+/** Stitches live dictation onto the line that was already in the box. */
+export function joinDictation(...parts: string[]) {
+  return parts
+    .map((part) => part.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+const RECORDER_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+
+/** Mime Chrome or Safari can record, so Stop has a clip to turn into words. */
+export function recorderMime(supported: (type: string) => boolean) {
+  return RECORDER_TYPES.find((type) => supported(type)) || '';
+}
+
+export const LIVE_TRANSCRIBE_GAP_MS = 1400;
+export const LIVE_TRANSCRIBE_MIN_BYTES = 1500;
+
+/** Drop a late transcript so an older clip cannot overwrite what you just said. */
+export function shouldPaintLiveTranscript(gen: number, latest: number, text: string) {
+  return gen === latest && !!(text || '').trim();
+}
+
+export const TALK_SILENCE_MS = 1200;
+export const WORD_QUIET_MS = 3600;
+export const TYPING_HOLD_MS = 1500;
+
+/** Speak stays on Typing while you talk, then Stop once you go quiet. */
+export function dictationButtonKind(hearing: boolean, spoken: boolean, openForMs: number): 'typing' | 'stop' {
+  if (openForMs < TYPING_HOLD_MS) return 'typing';
+  return hearing || !spoken ? 'typing' : 'stop';
+}

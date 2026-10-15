@@ -3,7 +3,7 @@ import { LANGUAGE_CODES, type ProfileInput } from '@conversa/shared';
 import type { AuthUser } from '../auth';
 import { runAi } from './run';
 import { genderRule, langLine, personaBlock, type Persona } from './persona';
-import { lineWorthReading } from '../table-reply';
+import { lastSpokenLine, lineWorthReading } from '../table-reply';
 import { SAFETY_RULES, detectSensitiveRequest, detectStopRequest, filterUnsafeSuggestion, looksLikeInjection, sanitizeUntrusted, untrusted } from './safety';
 import { detectLanguageHeuristic, normalizeLang } from './lang';
 import type { AiPart } from './provider';
@@ -475,18 +475,18 @@ export async function writeCafeGuestLine(opts: {
   topic: string;
   history: { mine: boolean; text: string }[];
 }) {
-  const latest = [...opts.history].reverse().find((turn) => turn.mine)?.text ?? '';
+  const latest = lastSpokenLine([...opts.history].reverse().find((turn) => turn.mine)?.text ?? '');
   const said = opts.history.filter((turn) => !turn.mine).map((turn) => turn.text).slice(-6);
-  const system = `You are ${opts.name}, texting from ${opts.city}, ${opts.country}. This is a café table about ordinary life. You are one person, not a guide, a teacher, or a translator.
+  const system = `You are ${opts.name}, texting from ${opts.city}, ${opts.country}. You are one person at one café table, not a guide.
 
 HOW YOU TEXT
 - Write only in ${langLine(opts.humanLang)}. Any other language is thrown away.
-- Sound like a text: contractions, a spoken rhythm, one or two sentences, one question at most.
-- Answer what they just asked in the first sentence. Then one small detail from your own street, only if it belongs there.
+- Sound like a text: contractions, one or two sentences, one question at most.
+- TABLE TOPIC (do not leave it): ${opts.topic || 'everyday life where each of you lives'}
+- Answer their last text in the first sentence. Keep one thing they named. Stay on the table topic.
+- If they wander, one short nod, then a question that returns to the topic. Do not start a new subject.
 - How you sound: ${opts.personality || 'Warm, curious, and specific about your own street.'}
-- Life you can draw from: ${opts.bio} You care about ${opts.interests.join(', ') || 'ordinary days'}.
-- Stay inside that voice. Do not sound like a guide, and do not give the same small talk another café guest would give.
-- Table topic: ${opts.topic || 'everyday life where each of you lives'}.
+- You may use this life only when it answers them or the topic: ${opts.bio} ${opts.interests.join(', ') || 'ordinary days'}.
 - Do not repeat a line you already sent.
 - Never write "I am glad to hear that", "You mentioned", "Thank you for telling me", "You said", or "Hello from ${opts.city}".
 - Do not invent a job, a family, money, a phone number, or a plan to meet.
@@ -503,11 +503,11 @@ HOW YOU TEXT
       messages: [{
         role: 'user',
         content: latest
-          ? `Their last text:\n${untrusted('latest', latest, 500)}\n\nAlready sent by you:\n${said.map((line) => untrusted('said', line, 300)).join('\n') || '(nothing yet)'}\n\nThread:\n${thread}`
-          : 'Nobody has written yet. Greet them with one ordinary detail from your street and one easy question.',
+          ? `Stay on this table topic:\n${untrusted('topic', opts.topic || 'everyday life', 300)}\n\nTheir last text:\n${untrusted('latest', latest, 500)}\n\nAlready sent by you:\n${said.map((line) => untrusted('said', line, 300)).join('\n') || '(nothing yet)'}\n\nThread:\n${thread}`
+          : `Nobody has written yet. Greet them on this table topic, with one ordinary detail from your street and one easy question:\n${untrusted('topic', opts.topic || 'everyday life', 300)}`,
       }],
       json: true,
-      temperature: 0.9,
+      temperature: 0.55,
       maxTokens: 220,
     },
     GuestLineSchema,
@@ -540,8 +540,8 @@ WORLD RULES
 - Write ONLY in ${langLine(opts.myLanguage)}. The live page will translate it for the other person.
 - This is a text message from a person at the table, not a paragraph, a speech, or a guidebook.
 - Use contractions. One or two sentences. Start with the answer or the reaction, not with thanks.
-- TABLE TOPIC: ${opts.prompt || 'everyday life where they live'}
-- Answer their last real line. Keep one concrete thing they named (a place, a food, a sound, a time of day). Stay with the table topic when that is what they asked, or when they have not answered it yet.
+- TABLE TOPIC (do not leave it): ${opts.prompt || 'everyday life where they live'}
+- Answer their last real line. Keep one concrete thing they named. Stay with the table topic. If they wander, one short nod, then return to the topic. Do not open a new subject.
 - Do not thank them and then change the subject. Do not ask what a normal day is like unless a normal day is what they said or what the topic asks.
 - Never write "I am glad to hear that", "You mentioned", "Thank you for telling me", or "You said".
 - A line that only says to stop, take care, or goodbye is the end of one story. It is not a request that you leave. Answer the table topic instead.
@@ -565,9 +565,12 @@ Peer first name: ${opts.peerName || 'them'}. They said they are in: ${opts.peerC
     {
       task: 'world_reply',
       system,
-      messages: [{ role: 'user', content: `Latest from them:\n${untrusted('latest_message', latest, 2000)}\n\nThread:\n${historyBlock || '(just started)'}` }],
+      messages: [{
+        role: 'user',
+        content: `Stay on this table topic:\n${untrusted('topic', opts.prompt || 'everyday life', 300)}\n\nLatest from them:\n${untrusted('latest_message', latest, 2000)}\n\nThread:\n${historyBlock || '(just started)'}`,
+      }],
       json: true,
-      temperature: opts.auto ? 0.8 : 0.9,
+      temperature: opts.auto ? 0.5 : 0.55,
       maxTokens: 400,
     },
     WorldReplySchema,
