@@ -871,7 +871,7 @@ export async function prepareWorldMessage(user: AuthUser, conversationId: string
   ]);
   const otherLang = otherRow?.myLanguage ?? 'en';
   const myLang = myRow?.myLanguage ?? 'en';
-  const { language, translateTo } = outgoingLanguages(text, myLang, otherLang);
+  const { language, translateTo, required } = outgoingLanguages(text, myLang, otherLang);
   let translation: string | null = null;
   let translationLang: string | null = null;
   if (translateTo) {
@@ -883,7 +883,7 @@ export async function prepareWorldMessage(user: AuthUser, conversationId: string
       if (err instanceof HttpError) throw err;
       translation = null;
     }
-    if (!translation) throw new HttpError(503, 'Could not translate that line. Tap Send again.', 'translate_failed');
+    if (!translation && required) throw new HttpError(503, 'Could not translate that line. Tap Send again.', 'translate_failed');
   }
   return {
     id: randomBytes(12).toString('base64url'),

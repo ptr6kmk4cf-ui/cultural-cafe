@@ -149,12 +149,25 @@ export function normalizeLang(code: string | null | undefined, fallback = 'en'):
   return LANGUAGE_CODES.includes(c) ? c : fallback;
 }
 
-/** A line already in their language is stored as theirs. Anything else is yours, then translated. */
+/**
+ * A line already in their language is stored as theirs.
+ * The other side is still translated so My language / Their language can flip.
+ * A line in your language is translated for them (required). A line already in
+ * theirs is translated back into yours (optional, for the switch).
+ */
 export function outgoingLanguages(text: string, myLang: string, otherLang: string) {
   const spoken = text.replace(/\s+/g, ' ').trim();
   if (otherLang && !draftNeedsTranslation(spoken, otherLang)) {
-    return { language: otherLang, translateTo: null as string | null };
+    return {
+      language: otherLang,
+      translateTo: myLang && myLang !== otherLang ? myLang : null,
+      required: false,
+    };
   }
   const language = normalizeLang(detectLanguageHeuristic(spoken, myLang || 'en'), myLang || 'en');
-  return { language, translateTo: otherLang && language !== otherLang ? otherLang : null };
+  return {
+    language,
+    translateTo: otherLang && language !== otherLang ? otherLang : null,
+    required: true,
+  };
 }

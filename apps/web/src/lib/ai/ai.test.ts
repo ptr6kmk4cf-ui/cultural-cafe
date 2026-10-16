@@ -140,14 +140,16 @@ test('the chosen language keeps the other language out', () => {
   assert.equal(pickLineInLanguage([croatian], 'en'), '');
 });
 
-test('a Croatian line you send to a Croatian guest is not translated again', () => {
+test('a Croatian line you send to a Croatian guest is stored as theirs and copied into yours', () => {
   const croatian = 'Kupujem previše voća i to zovem planom. Kava dolazi na drugo mjesto, pijem je stojeći.';
   const sent = outgoingLanguages(croatian, 'en', 'hr');
   assert.equal(sent.language, 'hr');
-  assert.equal(sent.translateTo, null);
+  assert.equal(sent.translateTo, 'en');
+  assert.equal(sent.required, false);
   const english = outgoingLanguages('If I miss the market, the rest of the day feels borrowed.', 'en', 'hr');
   assert.equal(english.language, 'en');
   assert.equal(english.translateTo, 'hr');
+  assert.equal(english.required, true);
 });
 
 test('an English reader does not keep a Chinese translation', () => {

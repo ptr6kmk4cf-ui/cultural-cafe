@@ -149,6 +149,16 @@ export function fillComposeOther(pair: ComposePair, fromTheirs: boolean, other: 
   return fromTheirs ? { ...pair, my: pair.my || next } : { ...pair, their: pair.their || next };
 }
 
+/** A late Suggest must land in the view you have now, not the one you had when you tapped. */
+export function placeAssistDraft(opts: { draft: string; wroteTheirs: boolean; nowTheirs: boolean; pair?: ComposePair }) {
+  const pair = composePairFromEdit(opts.wroteTheirs, opts.draft);
+  if (opts.wroteTheirs === opts.nowTheirs) {
+    return { pair, display: opts.draft.replace(/\s+/g, ' ').trim(), needsFlip: false };
+  }
+  const next = composeAfterSwitch(pair, opts.nowTheirs);
+  return { pair, display: next.text, needsFlip: next.needsTranslation };
+}
+
 /** The words this person should hear, in a language they can follow. */
 export function spokenLine(m: {
   mine: boolean;
@@ -163,13 +173,17 @@ export function spokenLine(m: {
 }) {
   const original = visibleLine(m.text);
   const translated = visibleLine(m.translation || '');
-  if (m.mine) return { text: original, lang: m.language || m.myLanguage };
   const theirLang = m.theirLanguage || m.language || '';
   if (m.inTheirLanguage) {
-    const inTheirs = theirLang ? pickLineInLanguage([original], theirLang) : '';
-    const inMine = pickLineInLanguage([original], m.myLanguage);
+    const pool = m.mine ? [original, translated] : [original];
+    const inTheirs = theirLang ? pickLineInLanguage(pool, theirLang) : '';
+    const inMine = pickLineInLanguage(m.mine ? [original, translated] : [original], m.myLanguage);
     const text = inTheirs || (!inMine ? original : '');
     return { text, lang: theirLang || m.language || m.myLanguage };
+  }
+  if (m.mine) {
+    const mine = pickLineInLanguage([original, translated], m.myLanguage);
+    return { text: mine || original, lang: m.language || m.myLanguage };
   }
   const mine = pickLineInLanguage([translated, original], m.myLanguage);
   return { text: mine, lang: m.myLanguage };

@@ -9,7 +9,7 @@ import { Alert, Badge, Spinner, useToast } from '@/components/ui';
 import { ApiError, api } from '@/lib/client';
 import { cafeBoardUrl } from '@/lib/cafe-board-url';
 import { deviceKeepsLines, forgetDeviceLines, loadDeviceLines, saveDeviceLines, setDeviceKeepsLines } from '@/lib/cafe-device';
-import { composeAfterSwitch, composePairFromEdit, composePairFromSwitch, emptyComposePair, fillComposeOther, spokenLine } from '@/lib/speech';
+import { composeAfterSwitch, composePairFromEdit, composePairFromSwitch, emptyComposePair, fillComposeOther, placeAssistDraft, spokenLine } from '@/lib/speech';
 import { AUTO_AFTER_BUBBLE_MS, GUEST_ANSWER_MS, SEND_DEBOUNCE_MS, remainingWait } from '@/lib/table-clock';
 import { bump, live } from '@/lib/table-lanes';
 import { isClosingLine } from '@/lib/table-reply';
@@ -69,6 +69,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
   const [keyboard, setKeyboard] = useState(0);
   const [keep, setKeep] = useState(false);
   const [hear, setHear] = useState(false);
+  const hearRef = useRef(false);
   const [useTheirs, setUseTheirs] = useState(false);
   const theirsRef = useRef(false);
   const guestHourRef = useRef(false);
@@ -106,6 +107,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
   msgsRef.current = msgs;
   textRef.current = text;
   myLangRef.current = myLang;
+  hearRef.current = hear;
 
   useEffect(() => {
     bump(tableGen);
@@ -388,15 +390,44 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
       });
   }
 
-  function showDraft(draft: string) {
-    const fromTheirs = theirsRef.current;
-    draftPair.current = composePairFromEdit(fromTheirs, draft);
-    setText(draft);
-    prefetchOtherDraft(draft, fromTheirs);
-    requestAnimationFrame(() => {
-      box.current?.focus();
-      box.current?.scrollIntoView({ block: 'nearest' });
-    });
+  function showDraft(draft: string, wroteTheirs = theirsRef.current) {
+    bump(prefetchGen);
+    bump(flipGen);
+    const placed = placeAssistDraft({ draft, wroteTheirs, nowTheirs: theirsRef.current });
+    draftPair.current = placed.pair;
+    const focusBox = () => {
+      requestAnimationFrame(() => {
+        box.current?.focus();
+        box.current?.scrollIntoView({ block: 'nearest' });
+      });
+    };
+    if (!placed.needsFlip) {
+      setText(placed.display);
+      prefetchOtherDraft(draft, wroteTheirs);
+      focusBox();
+      return;
+    }
+    const target = theirsRef.current ? theirLangRef.current : myLangRef.current;
+    setText(placed.display);
+    focusBox();
+    if (!target || !placed.display) return;
+    const gen = bump(flipGen);
+    const token = tableGen.current;
+    setFlipping(true);
+    void api('/api/ai/translate', { body: { text: placed.display, target } })
+      .then((r) => {
+        if (!live(tableGen, token) || !live(flipGen, gen)) return;
+        const translated = (r.translation || '').trim();
+        if (!translated) return;
+        draftPair.current = theirsRef.current
+          ? { ...draftPair.current, their: translated }
+          : { ...draftPair.current, my: translated };
+        setText(translated);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (live(tableGen, token) && live(flipGen, gen)) setFlipping(false);
+      });
   }
 
   function setCompose(value: string) {
@@ -433,13 +464,14 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
   async function assist(autoSend: boolean, handledId?: string) {
     if (assistRef.current) return;
     const token = tableGen.current;
+    const wroteTheirs = theirsRef.current;
     assistRef.current = true;
     if (!autoSend) setDrafting(true);
     else setBusy(true);
     setError('');
     try {
       const r = await api(`/api/world/conversations/${id}/assist`, {
-        body: { history: modelHistory(), auto: autoSend, inTheirLanguage: theirsRef.current },
+        body: { history: modelHistory(), auto: autoSend, inTheirLanguage: wroteTheirs },
       });
       if (!live(tableGen, token)) return;
       if (!autoSend) {
@@ -448,7 +480,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
           setError('Claude Sonnet did not write a line. Try again.');
           return;
         }
-        showDraft(drafted);
+        showDraft(drafted, wroteTheirs);
         return;
       }
       const drafted = (r.text || '').trim();
@@ -462,7 +494,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
         if (handledId) lastHandled.current = handledId;
         rememberAuto(false);
         show(r.holdReason || 'Paused — your turn.', 'error');
-        if (r.text) showDraft(r.text);
+        if (r.text) showDraft(r.text, wroteTheirs);
         return;
       }
       if (!disclosed.current && r.disclosure) {
@@ -526,6 +558,13 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
       /* Private browsing can block storage. */
     }
     stopSpeaking();
+    if (hearRef.current) {
+      const last = msgsRef.current.at(-1);
+      if (last && !last.mine) {
+        knownHear.current.delete(last.id);
+        if (heardRef.current === last.id) heardRef.current = '';
+      }
+    }
     if (fromTheirs === on) return;
     const next = composeAfterSwitch(draftPair.current, on);
     if (!next.needsTranslation) {

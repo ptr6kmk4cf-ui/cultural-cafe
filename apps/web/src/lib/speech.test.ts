@@ -5,6 +5,7 @@ import {
   composePairFromEdit,
   composePairFromSwitch,
   fillComposeOther,
+  placeAssistDraft,
   dictationButtonKind,
   joinDictation,
   recorderMime,
@@ -119,6 +120,34 @@ test('their line is heard in your language, not in theirs', () => {
   });
   assert.equal(heard.text, 'What is a normal Sunday like where you live?');
   assert.equal(heard.lang, 'en');
+});
+
+test('a late Suggest follows the view you have now', () => {
+  const croatian = 'Previše voća kao plan mi je super taktika za slobodno popodne.';
+  const same = placeAssistDraft({ draft: croatian, wroteTheirs: true, nowTheirs: true });
+  assert.equal(same.needsFlip, false);
+  assert.equal(same.display, croatian);
+  const flipped = placeAssistDraft({ draft: croatian, wroteTheirs: true, nowTheirs: false });
+  assert.equal(flipped.needsFlip, true);
+  assert.equal(flipped.display, croatian);
+  assert.equal(flipped.pair.their, croatian);
+  assert.equal(flipped.pair.my, '');
+});
+
+test('your own line follows the view you chose', () => {
+  const mine = {
+    mine: true as const,
+    text: 'If I miss the market, the rest of the day feels borrowed.',
+    language: 'en',
+    translation: 'Previše voća kao plan mi je super taktika za slobodno popodne. Imaš li ti neko mjesto gdje to voće pojedeš?',
+    translationLang: 'hr',
+    myLanguage: 'en',
+    theirLanguage: 'hr',
+  };
+  const theirs = spokenLine({ ...mine, inTheirLanguage: true });
+  const mineView = spokenLine({ ...mine, inTheirLanguage: false });
+  assert.match(theirs.text, /voća/);
+  assert.match(mineView.text, /market/);
 });
 
 test('your own line is heard as you said it', () => {
