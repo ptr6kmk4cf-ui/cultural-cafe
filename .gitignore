@@ -5,6 +5,7 @@ node_modules/
 apps/web/.env
 apps/web/storage/
 apps/extension/dist/
+apps/web/public/board-app
 apps/demo-site/data/state.json
 .data/
 *.log

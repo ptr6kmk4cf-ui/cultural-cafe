@@ -122,7 +122,8 @@ export async function mockComplete(req: AiRequest): Promise<AiResult> {
       const p = PHRASES[lang] ?? PHRASES.en;
       const mentioned = (req.system.match(/The user says they are in ([^.]+)\./) || [])[1] ?? '';
       const place = mentioned && mentioned !== 'their own city' ? mentioned : '';
-      const line = stop || sensitive ? p.bye : replyAboutTheirLine({ latest, topic, place });
+      const line =
+        stop || sensitive ? p.bye : lang === 'en' ? replyAboutTheirLine({ latest, topic, place }) : `${p.reply} ${p.follow}`;
       out = {
         text: line,
         hold: stop || sensitive,

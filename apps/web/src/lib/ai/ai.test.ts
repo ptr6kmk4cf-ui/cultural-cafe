@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { hardFilter, matchRequestedPhoto, tagMatchesDealbreaker } from './tasks';
-import { detectLanguageHeuristic, normalizeLang, translationFitsLanguage } from './lang';
+import { detectLanguageHeuristic, draftNeedsTranslation, normalizeLang, translationFitsLanguage } from './lang';
 import { detectSensitiveRequest, detectStopRequest, filterUnsafeSuggestion, looksLikeInjection, sanitizeUntrusted } from './safety';
 
 const prefs = { ageMin: 25, ageMax: 38, location: '', maxDistanceKm: 100, relationshipGoals: [], interests: [], lifestyle: [], physicalPreferences: '', dealbreakers: ['smoker'] };
@@ -89,6 +89,28 @@ test('heuristic language detection', () => {
   assert.equal(detectLanguageHeuristic('Cześć, jak minął ci dzień? Też nie wiem'), 'pl');
   assert.equal(detectLanguageHeuristic('Merhaba, günün nasıl geçti? Ben çok iyiyim'), 'tr');
   assert.equal(detectLanguageHeuristic('Hej, hur var din dag? Jag är också trött'), 'sv');
+});
+
+test('a later English draft in their language still needs translation', () => {
+  assert.equal(
+    draftNeedsTranslation(
+      'That sounds delicious. In Paris I would let a visitor try shakshuka first.',
+      'sw',
+    ),
+    true,
+  );
+  assert.equal(
+    draftNeedsTranslation(
+      'Chai na mandazi inasikika tamu sana. Hapa Paris ningependa mgeni aonje shakshuka.',
+      'sw',
+    ),
+    false,
+  );
+  assert.equal(draftNeedsTranslation('Ça sent le pain chaud le matin. Et chez toi ?', 'fr'), false);
+  assert.equal(draftNeedsTranslation('That smells like warm bread in the morning. How about you?', 'fr'), true);
+  assert.equal(draftNeedsTranslation('मेरो ठाउँमा बगैचा छ। तिम्रोमा कस्तो छ?', 'ne'), false);
+  assert.equal(detectLanguageHeuristic('मेरो ठाउँमा बगैचा छ।', 'ne'), 'ne');
+  assert.equal(draftNeedsTranslation('In Kathmandu, Garden is still the part I can describe. How is it where you live?', 'ne'), true);
 });
 
 test('an English reader does not keep a Chinese translation', () => {

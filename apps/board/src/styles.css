@@ -1,0 +1,46 @@
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: #120e0a;
+  color: #f4efe6;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+.cafe-board-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #1a1510;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cafe-board-bar h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.cafe-board-bar p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: #b6aa98;
+}
+
+.cafe-board-bar a {
+  color: #e6c98a;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.cafe-board-stage {
+  height: calc(100% - 52px);
+}
+
+.cafe-board-msg {
+  padding: 24px;
+  max-width: 28rem;
+}

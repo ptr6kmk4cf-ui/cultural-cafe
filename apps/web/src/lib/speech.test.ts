@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  composeAfterSwitch,
+  composePairFromEdit,
+  composePairFromSwitch,
+  fillComposeOther,
   dictationButtonKind,
   joinDictation,
   recorderMime,
@@ -18,6 +22,60 @@ test('the mic and speaker use a real locale for the language you read', () => {
   assert.equal(speechLocale('zh'), 'zh-CN');
   assert.equal(speechLocale('pt-PT'), 'pt-PT');
   assert.equal(speechLocale('xx'), 'en-US');
+});
+
+test('switching to my language mid-table shows their translation, not a mix', () => {
+  const theirs = spokenLine({
+    mine: false,
+    text: 'Jumapili hapa huanza na chai.',
+    language: 'sw',
+    translation: 'Sunday here starts with tea.',
+    translationLang: 'en',
+    myLanguage: 'en',
+    inTheirLanguage: true,
+  });
+  const mine = spokenLine({
+    mine: false,
+    text: 'Jumapili hapa huanza na chai.',
+    language: 'sw',
+    translation: 'Sunday here starts with tea.',
+    translationLang: 'en',
+    myLanguage: 'en',
+    inTheirLanguage: false,
+  });
+  assert.equal(theirs.text, 'Jumapili hapa huanza na chai.');
+  assert.equal(mine.text, 'Sunday here starts with tea.');
+});
+
+test('an unsent suggest flips with my language and their language', () => {
+  const suggested = composePairFromEdit(true, 'Jumapili yangu hapa Paris natembea kando ya mto.');
+  const saved = composePairFromSwitch(suggested, true, suggested.their);
+  const toMine = composeAfterSwitch(saved, false);
+  assert.equal(toMine.needsTranslation, true);
+  assert.match(toMine.text, /Jumapili/);
+  const both = { ...saved, my: 'On Sunday in Paris I walk by the river.' };
+  const flipped = composeAfterSwitch(both, false);
+  assert.equal(flipped.needsTranslation, false);
+  assert.match(flipped.text, /Paris I walk/);
+  const back = composeAfterSwitch(both, true);
+  assert.equal(back.needsTranslation, false);
+  assert.match(back.text, /Jumapili/);
+  const warmed = fillComposeOther(suggested, true, 'On Sunday in Paris I walk by the river.');
+  assert.equal(composeAfterSwitch(warmed, false).needsTranslation, false);
+});
+
+test('when you choose their language, you hear and read the original', () => {
+  const heard = spokenLine({
+    mine: false,
+    text: '¿Cómo es un domingo normal donde vives?',
+    language: 'es',
+    translation: 'What is a normal Sunday like where you live?',
+    translationLang: 'en',
+    myLanguage: 'en',
+    inTheirLanguage: true,
+  });
+  assert.equal(heard.text, '¿Cómo es un domingo normal donde vives?');
+  assert.equal(heard.lang, 'es');
 });
 
 test('their line is heard in your language, not in theirs', () => {

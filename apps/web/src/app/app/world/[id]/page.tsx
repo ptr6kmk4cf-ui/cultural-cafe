@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { isRtl } from '@conversa/shared';
+import { isRtl, languageName } from '@conversa/shared';
 import { DictationButton, HearButton, speakLine, stopSpeaking, unlockSpeech, type DictationHandle } from '@/components/CafeSpeech';
 import { useUi } from '@/components/UiLocale';
 import { Alert, Badge, Spinner, useToast } from '@/components/ui';
 import { ApiError, api } from '@/lib/client';
+import { cafeBoardUrl } from '@/lib/cafe-board-url';
 import { deviceKeepsLines, forgetDeviceLines, loadDeviceLines, saveDeviceLines, setDeviceKeepsLines } from '@/lib/cafe-device';
-import { spokenLine, visibleLine } from '@/lib/speech';
+import { composeAfterSwitch, composePairFromEdit, composePairFromSwitch, emptyComposePair, fillComposeOther, spokenLine, visibleLine } from '@/lib/speech';
+import { bump, live } from '@/lib/table-lanes';
 import { isClosingLine } from '@/lib/table-reply';
 import { useWorldPeer } from '@/lib/world-peer';
 
@@ -20,7 +22,7 @@ type Conv = {
   remainingMs: number;
   offerer: boolean;
   ice: { iceServers: { urls: string; username?: string; credential?: string }[]; turnConfigured: boolean };
-  peer: { id: string; name: string; city: string; country: string; gender?: '' | 'man' | 'woman'; languageLabel: string; portraitUrl: string | null; guest?: boolean } | null;
+  peer: { id: string; name: string; city: string; country: string; gender?: '' | 'man' | 'woman'; language?: string; languageLabel: string; portraitUrl: string | null; guest?: boolean } | null;
   prompt: { id: string; title: string; question: string } | null;
 };
 
@@ -35,6 +37,7 @@ export default function WorldChat() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [drafting, setDrafting] = useState(false);
+  const [flipping, setFlipping] = useState(false);
   const [auto, setAuto] = useState(false);
   const [reading, setReading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -57,6 +60,16 @@ export default function WorldChat() {
   const [keyboard, setKeyboard] = useState(0);
   const [keep, setKeep] = useState(false);
   const [hear, setHear] = useState(false);
+  const [useTheirs, setUseTheirs] = useState(false);
+  const theirsRef = useRef(false);
+  const guestHourRef = useRef(false);
+  const myLangRef = useRef(myLang);
+  const theirLangRef = useRef('');
+  const textRef = useRef('');
+  const draftPair = useRef(emptyComposePair());
+  const flipGen = useRef(0);
+  const prefetchGen = useRef(0);
+  const tableGen = useRef(0);
   const [micPhase, setMicPhase] = useState<'idle' | 'asking' | 'listening'>('idle');
   const knownHear = useRef(new Set<string>());
   const heardRef = useRef('');
@@ -76,13 +89,25 @@ export default function WorldChat() {
   const ready = conv != null;
   const ended = ready && (conv.status !== 'ACTIVE' || left <= 0);
   const guestHour = !!conv?.peer?.guest && conv.id === id;
+  guestHourRef.current = guestHour;
   const { status: peer, send: sendPeer } = useWorldPeer(id, conv?.offerer, conv?.ice, !!conv && !ended && !guestHour, onRemote);
   const peerRef = useRef(peer);
   sendPeerRef.current = sendPeer;
   peerRef.current = peer;
   msgsRef.current = msgs;
+  textRef.current = text;
+  myLangRef.current = myLang;
 
   useEffect(() => {
+    bump(tableGen);
+    bump(prefetchGen);
+    bump(flipGen);
+    setConv(null);
+    setLeft(0);
+    setError('');
+    setText('');
+    draftPair.current = emptyComposePair();
+    autoTries.current = {};
     setKeep(deviceKeepsLines());
     const saved = loadDeviceLines(id);
     msgsRef.current = saved;
@@ -91,20 +116,34 @@ export default function WorldChat() {
     heardRef.current = '';
     knownHear.current = new Set(saved.map((m) => m.id));
     try {
-      const on = sessionStorage.getItem(`cafe-hear:${id}`) === '1';
-      setHear(on);
+      setHear(sessionStorage.getItem(`cafe-hear:${id}`) === '1');
+      const theirs = sessionStorage.getItem(`cafe-theirs:${id}`) === '1';
+      theirsRef.current = theirs;
+      setUseTheirs(theirs);
     } catch {
       setHear(false);
+      theirsRef.current = false;
+      setUseTheirs(false);
     }
+    return () => {
+      bump(tableGen);
+      bump(prefetchGen);
+      bump(flipGen);
+    };
   }, [id]);
 
   useEffect(() => {
+    let liveFetch = true;
     api('/api/me')
       .then((d) => {
+        if (!liveFetch) return;
         const mine = d.language?.myLanguage;
         if (mine) setMyLang(mine);
       })
       .catch(() => {});
+    return () => {
+      liveFetch = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -117,6 +156,13 @@ export default function WorldChat() {
 
   useEffect(() => {
     if (msgs.length > 200) setMsgs((current) => current.slice(-200));
+    const keepIds = new Set(msgs.map((m) => m.id));
+    for (const heard of knownHear.current) {
+      if (!keepIds.has(heard)) knownHear.current.delete(heard);
+    }
+    for (const tried of Object.keys(autoTries.current)) {
+      if (!keepIds.has(tried)) delete autoTries.current[tried];
+    }
   }, [msgs]);
 
   useEffect(() => {
@@ -144,13 +190,15 @@ export default function WorldChat() {
       return;
     }
     greeted.current = id;
+    const token = tableGen.current;
     api(`/api/world/conversations/${id}/guest`, { body: { history: [] } })
       .then((r) => {
+        if (!live(tableGen, token)) return;
         const message = r.message as Msg;
         setMsgs((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
       })
       .catch(() => {
-        if (greeted.current === id) greeted.current = '';
+        if (live(tableGen, token) && greeted.current === id) greeted.current = '';
       });
   }, [guestHour, id, ended]);
 
@@ -164,7 +212,7 @@ export default function WorldChat() {
     let closed = false;
     const beat = () => {
       if (closed) return;
-      const phase = guestHour || peerRef.current === 'open' ? 'open' : 'connecting';
+      const phase = guestHourRef.current || peerRef.current === 'open' ? 'open' : 'connecting';
       api(`/api/world/conversations/${hourId}/link`, { body: { phase } }).catch(() => {});
     };
     const release = () => {
@@ -200,7 +248,7 @@ export default function WorldChat() {
       }, 1500);
       pendingRelease.current = { id: hourId, timer };
     };
-  }, [id, ready, ended, guestHour]);
+  }, [id, ready, ended]);
 
   useEffect(() => {
     const t = setInterval(() => setLeft((ms) => Math.max(0, ms - 1000)), 1000);
@@ -232,13 +280,16 @@ export default function WorldChat() {
   }
 
   async function ship(raw: string, replaceId?: string) {
+    const token = tableGen.current;
+    const hour = guestHourRef.current;
     const r = await api(`/api/world/conversations/${id}/prepare`, { body: { text: raw } });
+    if (!live(tableGen, token)) return;
     const mine = { ...r.message, mine: true as const };
     const place = (list: Msg[]) => {
       const without = replaceId ? list.filter((x) => x.id !== replaceId && x.id !== mine.id) : list.filter((x) => x.id !== mine.id);
       return [...without, mine];
     };
-    if (guestHour) {
+    if (hour) {
       const prior = place(msgsRef.current)
         .filter((m) => !m.id.startsWith('local_') && m.id !== mine.id)
         .slice(-11)
@@ -251,12 +302,17 @@ export default function WorldChat() {
         ...prior,
         { mine: true as const, text: raw.slice(0, 500), translation: (mine.translation || '').slice(0, 500) },
       ];
-      const reply = await api(`/api/world/conversations/${id}/guest`, { body: { history } });
-      setMsgs((m) => {
-        const next = place(m);
-        return next.some((x) => x.id === reply.message.id) ? next : [...next, reply.message];
-      });
-      if (reply.closed) rememberAuto(false);
+      setMsgs((m) => place(m));
+      void api(`/api/world/conversations/${id}/guest`, { body: { history } })
+        .then((reply) => {
+          if (!live(tableGen, token)) return;
+          setMsgs((m) => (m.some((x) => x.id === reply.message.id) ? m : [...m, reply.message]));
+          if (reply.closed) rememberAuto(false);
+        })
+        .catch((e) => {
+          if (!live(tableGen, token)) return;
+          setError((e as Error).message || 'They did not answer. Send again or wait.');
+        });
       return;
     }
     try {
@@ -277,37 +333,70 @@ export default function WorldChat() {
       setError('Type a few words, then tap Send.');
       return;
     }
+    const token = tableGen.current;
     busyRef.current = true;
     setSending(true);
     setError('');
     dictate.current?.hangUp();
     const localId = `local_${Date.now().toString(36)}`;
     setMsgs((m) => [...m, { id: localId, mine: true, text: body, language: '', translation: null, translationLang: null, flagged: false, createdAt: new Date().toISOString() }]);
+    bump(prefetchGen);
+    draftPair.current = emptyComposePair();
     setText('');
     try {
       await ship(body, localId);
     } catch (e) {
+      if (!live(tableGen, token)) return;
       setMsgs((m) => m.filter((x) => x.id !== localId));
+      draftPair.current = composePairFromEdit(theirsRef.current, body);
       setText(body);
       setError((e as Error).message || 'Could not send. Tap Send again.');
     } finally {
       busyRef.current = false;
-      setSending(false);
+      if (live(tableGen, token)) setSending(false);
     }
   }
 
+  function prefetchOtherDraft(source: string, fromTheirs: boolean) {
+    const target = fromTheirs ? myLangRef.current : theirLangRef.current;
+    const clean = source.replace(/\s+/g, ' ').trim();
+    if (!target || !clean) return;
+    const gen = bump(prefetchGen);
+    const token = tableGen.current;
+    void api('/api/ai/translate', { body: { text: clean, target } })
+      .then((r) => {
+        if (!live(tableGen, token) || !live(prefetchGen, gen)) return;
+        const next = (r.translation || '').trim();
+        if (!next) return;
+        draftPair.current = fillComposeOther(draftPair.current, fromTheirs, next);
+      })
+      .catch(() => {
+        /* Switch can still translate on demand. */
+      });
+  }
+
   function showDraft(draft: string) {
+    const fromTheirs = theirsRef.current;
+    draftPair.current = composePairFromEdit(fromTheirs, draft);
     setText(draft);
+    prefetchOtherDraft(draft, fromTheirs);
     requestAnimationFrame(() => {
       box.current?.focus();
       box.current?.scrollIntoView({ block: 'nearest' });
     });
   }
 
+  function setCompose(value: string) {
+    bump(prefetchGen);
+    draftPair.current = composePairFromEdit(theirsRef.current, value);
+    setText(value);
+  }
+
   function modelHistory() {
+    const theirs = theirsRef.current;
     return msgsRef.current.slice(-24).map((m) => ({
       mine: m.mine,
-      text: (m.mine ? m.text : m.translation || m.text).slice(0, 2000),
+      text: (m.mine ? m.text : theirs ? m.text : m.translation || m.text).slice(0, 2000),
     }));
   }
 
@@ -322,14 +411,16 @@ export default function WorldChat() {
 
   async function assist(autoSend: boolean, handledId?: string) {
     if (assistRef.current) return;
+    const token = tableGen.current;
     assistRef.current = true;
-    setBusy(true);
     if (!autoSend) setDrafting(true);
+    else setBusy(true);
     setError('');
     try {
       const r = await api(`/api/world/conversations/${id}/assist`, {
-        body: { history: modelHistory(), auto: autoSend },
+        body: { history: modelHistory(), auto: autoSend, inTheirLanguage: theirsRef.current },
       });
+      if (!live(tableGen, token)) return;
       if (!autoSend) {
         const drafted = (r.text || '').trim();
         if (!drafted) {
@@ -364,14 +455,17 @@ export default function WorldChat() {
       await ship(r.text);
       if (handledId) lastHandled.current = handledId;
     } catch (e) {
+      if (!live(tableGen, token)) return;
       const err = e as ApiError;
       if (err.status === 409) rememberAuto(false);
       setError(err.message || 'Claude Sonnet did not answer. Try again.');
       setNudge((n) => n + 1);
     } finally {
       assistRef.current = false;
-      setBusy(false);
-      setDrafting(false);
+      if (live(tableGen, token)) {
+        setBusy(false);
+        setDrafting(false);
+      }
     }
   }
 
@@ -399,6 +493,46 @@ export default function WorldChat() {
     }
   }
 
+  function rememberTheirs(on: boolean) {
+    const fromTheirs = theirsRef.current;
+    draftPair.current = composePairFromSwitch(draftPair.current, fromTheirs, textRef.current);
+    theirsRef.current = on;
+    setUseTheirs(on);
+    try {
+      sessionStorage.setItem(`cafe-theirs:${id}`, on ? '1' : '0');
+    } catch {
+      /* Private browsing can block storage. */
+    }
+    stopSpeaking();
+    if (fromTheirs === on) return;
+    const next = composeAfterSwitch(draftPair.current, on);
+    if (!next.needsTranslation) {
+      if (next.text !== textRef.current) setText(next.text);
+      return;
+    }
+    const target = on ? theirLangRef.current : myLangRef.current;
+    if (!target) return;
+    const gen = bump(flipGen);
+    const token = tableGen.current;
+    setFlipping(true);
+    setError('');
+    void api('/api/ai/translate', { body: { text: next.text, target } })
+      .then((r) => {
+        if (!live(tableGen, token) || !live(flipGen, gen)) return;
+        const translated = (r.translation || '').trim();
+        if (!translated) return;
+        draftPair.current = on ? { ...draftPair.current, their: translated } : { ...draftPair.current, my: translated };
+        setText(translated);
+      })
+      .catch((e) => {
+        if (!live(tableGen, token) || !live(flipGen, gen)) return;
+        setError((e as Error).message || t('draftFlipFailed'));
+      })
+      .finally(() => {
+        if (live(tableGen, token) && live(flipGen, gen)) setFlipping(false);
+      });
+  }
+
   useEffect(() => {
     if (!hear || ended) return;
     const last = msgs.at(-1);
@@ -406,9 +540,9 @@ export default function WorldChat() {
     if (knownHear.current.has(last.id)) return;
     knownHear.current.add(last.id);
     heardRef.current = last.id;
-    const line = spokenLine({ ...last, myLanguage: myLang });
+    const line = spokenLine({ ...last, myLanguage: myLang, inTheirLanguage: useTheirs });
     if (line.text) speakLine(last.id, line.text, line.lang);
-  }, [hear, ended, msgs, myLang]);
+  }, [hear, ended, msgs, myLang, useTheirs]);
 
   useEffect(() => {
     try {
@@ -426,6 +560,13 @@ export default function WorldChat() {
 
   const last = msgs[msgs.length - 1];
   const waitFor = last && !last.mine && !last.id.startsWith('local_') ? last.id : '';
+  const theirLang = conv?.peer?.language || '';
+  const canUseTheirs = !!theirLang && theirLang !== myLang;
+  const inTheirs = useTheirs && canUseTheirs;
+  theirsRef.current = useTheirs;
+  theirLangRef.current = theirLang;
+  const speakLang = inTheirs ? theirLang : myLang;
+  const theirLangName = theirLang ? languageName(theirLang) : '';
 
   useEffect(() => {
     if (!auto || !guestHour) return;
@@ -509,22 +650,93 @@ export default function WorldChat() {
   const secs = Math.floor((left % 60000) / 1000);
 
   const answerButtons = ready && !ended && (
-    <div className="flex flex-wrap gap-2">
-      <button className="btn-primary text-xs" disabled={busy || !!last?.mine} onClick={() => assist(false)}>
-        {drafting ? t('writing') : t('suggest')}
-      </button>
-      {auto ? (
-        <button className="btn-secondary text-xs" onClick={() => { rememberAuto(false); show(t('answeringOff')); }}>{t('stopAuto')}</button>
-      ) : (
-        <button className="btn-secondary text-xs" disabled={busy} onClick={startAuto}>
-          {t('answerAuto')}
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-end gap-3">
+        {canUseTheirs && (
+          <div>
+            <p className="label">{t('youUse')}</p>
+            <div className="seg" role="group" aria-label={t('languageView')} aria-busy={flipping}>
+              <button
+                type="button"
+                className="seg-btn"
+                aria-pressed={!inTheirs}
+                title={t('myLanguageHint')}
+                onClick={() => rememberTheirs(false)}
+              >
+                {t('useMyLanguage')}
+              </button>
+              <button
+                type="button"
+                className="seg-btn"
+                aria-pressed={inTheirs}
+                title={t('theirLanguageHint')}
+                onClick={() => rememberTheirs(true)}
+              >
+                {t('theirLanguage')}
+              </button>
+            </div>
+          </div>
+        )}
+        <div>
+          <p className="label">{t('hearThem')}</p>
+          <div className="seg" role="group" aria-label={t('hearView')}>
+            <button
+              type="button"
+              className="seg-btn"
+              aria-pressed={hear}
+              title={t('hearRepliesHint')}
+              onClick={() => rememberHear(true)}
+            >
+              {t('modeOn')}
+            </button>
+            <button
+              type="button"
+              className="seg-btn"
+              aria-pressed={!hear}
+              title={t('muteRepliesHint')}
+              onClick={() => rememberHear(false)}
+            >
+              {t('modeOff')}
+            </button>
+          </div>
+        </div>
+        <div>
+          <p className="label">{t('autoAnswer')}</p>
+          <div className="seg" role="group" aria-label={t('autoAnswer')}>
+            <button
+              type="button"
+              className="seg-btn"
+              aria-pressed={auto}
+              onClick={() => { if (!auto) void startAuto(); }}
+            >
+              {t('modeOn')}
+            </button>
+            <button
+              type="button"
+              className="seg-btn"
+              aria-pressed={!auto}
+              onClick={() => { if (auto) { rememberAuto(false); show(t('answeringOff')); } }}
+            >
+              {t('modeOff')}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button className="btn-primary text-xs" disabled={drafting || !!last?.mine} onClick={() => assist(false)}>
+          {drafting ? t('writing') : t('suggest')}
         </button>
-      )}
-      {hear ? (
-        <button className="btn-secondary text-xs" onClick={() => rememberHear(false)}>{t('muteReplies')}</button>
-      ) : (
-        <button className="btn-secondary text-xs" onClick={() => rememberHear(true)}>{t('hearReplies')}</button>
-      )}
+        {process.env.NODE_ENV !== 'production' && !guestHour && (
+          <button
+            type="button"
+            className="btn-secondary text-xs"
+            title={t('boardHint')}
+            onClick={() => window.open(cafeBoardUrl(id), 'cafe-board')}
+          >
+            {t('board')}
+          </button>
+        )}
+      </div>
     </div>
   );
 
@@ -574,17 +786,19 @@ export default function WorldChat() {
       <div className="card min-h-[8rem] flex-1 space-y-3 overflow-y-auto p-3" data-world-thread data-world-peer={guestHour ? 'open' : peer}>
         {msgs.length === 0 && (
           <p className="text-sm text-ink-400">
-            {t('writeHere', { name: conv?.peer?.name || t('them') })}
+            {inTheirs
+              ? t('writeHereTheirs', { name: conv?.peer?.name || t('them'), language: theirLangName })
+              : t('writeHere', { name: conv?.peer?.name || t('them') })}
           </p>
         )}
         {msgs.map((m) => {
           const who = m.mine ? t('you') : (conv?.peer?.name ?? t('them'));
-          const heard = spokenLine({ ...m, myLanguage: myLang });
+          const heard = spokenLine({ ...m, myLanguage: myLang, inTheirLanguage: inTheirs });
           const main = heard.text;
           return (
             <div key={m.id} className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${m.mine ? 'ml-auto bg-brand-500/20 text-white' : 'mr-auto bg-white/5 text-ink-100'}`}>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-300">{who}</p>
-              <p className="mt-0.5 text-base" dir={isRtl(m.mine ? m.language : m.translationLang || m.language) ? 'rtl' : 'auto'}>{main}</p>
+              <p className="mt-0.5 text-base" dir={isRtl(heard.lang) ? 'rtl' : 'auto'}>{main}</p>
               <HearButton
                 id={m.id}
                 text={heard.text}
@@ -617,11 +831,11 @@ export default function WorldChat() {
             <textarea
               ref={box}
               className="input min-h-[3rem] flex-1 text-base"
-              dir="auto"
+              dir={isRtl(speakLang) ? 'rtl' : 'auto'}
               enterKeyHint="send"
-              placeholder={micPhase === 'asking' ? t('askingMic') : micPhase === 'listening' ? t('listening') : reading ? t('reading') : auto ? t('answeringOn') : t('writePlaceholder')}
+              placeholder={micPhase === 'asking' ? t('askingMic') : micPhase === 'listening' ? t('listening') : reading ? t('reading') : auto ? t('answeringOn') : inTheirs ? t('writePlaceholderTheirs') : t('writePlaceholder')}
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => setCompose(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
@@ -631,10 +845,10 @@ export default function WorldChat() {
             />
             <DictationButton
               ref={dictate}
-              lang={myLang}
+              lang={speakLang}
               value={text}
               topic={conv?.prompt?.question ?? ''}
-              onChange={setText}
+              onChange={setCompose}
               onPhase={setMicPhase}
               onError={setError}
               disabled={sending}
@@ -660,7 +874,10 @@ export default function WorldChat() {
             </button>
           </div>
           <p className="text-xs text-ink-400">
-            {t('readsTranslation', { name: peerName })} {keep ? t('staysOnDevice') : t('nothingSaved')}
+            {inTheirs
+              ? t('readsTheirs', { name: peerName, language: theirLangName })
+              : t('readsTranslation', { name: peerName })}{' '}
+            {keep ? t('staysOnDevice') : t('nothingSaved')}
           </p>
         </div>
       )}

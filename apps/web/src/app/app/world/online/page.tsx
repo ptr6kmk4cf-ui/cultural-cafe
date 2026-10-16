@@ -38,9 +38,17 @@ export default function OnlinePage() {
   const board = useRef<HTMLElement>(null);
 
   useEffect(() => {
+    let liveFetch = true;
     api<{ people: Person[] }>('/api/world/people')
-      .then((data) => setPeople(data.people))
-      .catch((err) => setError((err as Error).message));
+      .then((data) => {
+        if (liveFetch) setPeople(data.people);
+      })
+      .catch((err) => {
+        if (liveFetch) setError((err as Error).message);
+      });
+    return () => {
+      liveFetch = false;
+    };
   }, []);
 
   const here = useMemo(

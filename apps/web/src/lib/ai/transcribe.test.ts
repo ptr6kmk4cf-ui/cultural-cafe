@@ -45,6 +45,12 @@ test('Speak is told the table topic so a near miss can be corrected', () => {
   assert.match(prompt, /keep their words/);
 });
 
+test('Speak in their language must not be rewritten into English', () => {
+  const prompt = speechPrompt('sw', 'What song or sound reminds you of home?');
+  assert.match(prompt, /Swahili/);
+  assert.match(prompt, /Do not translate/);
+});
+
 test('Speak auto-corrects a near miss onto the table topic', async () => {
   const original = globalThis.fetch;
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {

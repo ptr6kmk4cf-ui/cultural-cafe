@@ -19,20 +19,43 @@ export default function Photos() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const previewUrl = useRef<string | null>(null);
+  const loadGen = useRef(0);
   const [toast, show] = useToast();
 
+  function replacePreview(next: { file: File; url: string } | null) {
+    if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+    previewUrl.current = next?.url ?? null;
+    setPreview(next);
+  }
+
   const load = async () => {
-    const [p, a] = await Promise.all([api(`/api/photos${album ? `?albumId=${album}` : ''}`), api('/api/albums')]);
-    setPhotos(p.photos);
-    setAlbums(a.albums);
-  };
-  useEffect(() => {
-    load().catch((e) => {
+    const token = ++loadGen.current;
+    try {
+      const [p, a] = await Promise.all([api(`/api/photos${album ? `?albumId=${album}` : ''}`), api('/api/albums')]);
+      if (token !== loadGen.current) return;
+      setPhotos(p.photos);
+      setAlbums(a.albums);
+    } catch (e) {
+      if (token !== loadGen.current) return;
       setError((e as Error).message);
       setPhotos([]);
-    });
+    }
+  };
+  useEffect(() => {
+    void load();
+    return () => {
+      loadGen.current += 1;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [album]);
+
+  useEffect(
+    () => () => {
+      if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+    },
+    [],
+  );
 
   function pick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -40,7 +63,7 @@ export default function Photos() {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) return setError('Only JPEG, PNG and WebP images are supported.');
     if (f.size > 10 * 1024 * 1024) return setError('Max 10 MB per photo.');
     setError('');
-    setPreview({ file: f, url: URL.createObjectURL(f) });
+    replacePreview({ file: f, url: URL.createObjectURL(f) });
   }
 
   async function upload() {
@@ -55,7 +78,7 @@ export default function Photos() {
       form.append('aiApproved', String(meta.category !== 'PRIVATE' && meta.aiApproved));
       if (album) form.append('albumId', album);
       await api('/api/photos', { form });
-      setPreview(null);
+      replacePreview(null);
       setMeta({ caption: '', tags: '', category: 'GENERAL', aiApproved: true });
       if (fileRef.current) fileRef.current.value = '';
       show('Uploaded — location metadata removed');

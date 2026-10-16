@@ -31,9 +31,17 @@ export default function MapPage() {
   const peopleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let liveFetch = true;
     api<{ people: Card[] }>('/api/world/people')
-      .then((data) => setPeople(data.people))
-      .catch((err) => setError((err as Error).message));
+      .then((data) => {
+        if (liveFetch) setPeople(data.people);
+      })
+      .catch((err) => {
+        if (liveFetch) setError((err as Error).message);
+      });
+    return () => {
+      liveFetch = false;
+    };
   }, []);
 
   const counts = useMemo(() => (people ? countriesWithPeople(people, atlasCountryNames) : new Map<string, number>()), [people]);

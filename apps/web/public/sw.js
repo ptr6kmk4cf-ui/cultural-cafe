@@ -16,6 +16,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.mode !== 'navigate') return;
   const url = new URL(event.request.url);
+  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return;
   // Android share target: move shared text into the URL fragment so it never reaches the server or its logs.
   if (url.pathname === '/app/assistant' && (url.searchParams.has('text') || url.searchParams.has('title'))) {
     const shared = [url.searchParams.get('title'), url.searchParams.get('text')].filter(Boolean).join('\n');

@@ -10,13 +10,19 @@ let preferredCache: Promise<string[]> | null = null;
 export function usePreferredLanguages(): string[] {
   const [langs, setLangs] = useState<string[]>([]);
   useEffect(() => {
+    let liveFetch = true;
     preferredCache ??= api('/api/settings')
       .then((d) => (d.language?.preferredLanguages as string[]) ?? [])
       .catch(() => {
         preferredCache = null;
         return [];
       });
-    preferredCache.then(setLangs);
+    preferredCache.then((langs) => {
+      if (liveFetch) setLangs(langs);
+    });
+    return () => {
+      liveFetch = false;
+    };
   }, []);
   return langs;
 }

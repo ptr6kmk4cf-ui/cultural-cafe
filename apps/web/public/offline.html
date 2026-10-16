@@ -15,7 +15,7 @@
     <img src="/icons/icon-192.png" alt="" />
     <h1>You're offline</h1>
     <p>Cultural Café needs a connection to reach your account and the Café.</p>
-    <button onclick="location.reload()">Try again</button>
+    <button type="button" onclick="location.replace(location.pathname === '/offline.html' ? '/app' : location.href)">Try again</button>
   </main>
 </body>
 </html>

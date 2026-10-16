@@ -67,16 +67,41 @@ export function scriptLanguage(text: string): string | null {
   return null;
 }
 
+/** Languages that share a writing system, so Hindi vs Nepali is not a false mismatch. */
+const SCRIPT_FAMILY: Record<string, string> = {
+  hi: 'devanagari',
+  ne: 'devanagari',
+  mr: 'devanagari',
+  sa: 'devanagari',
+};
+
+function sameScriptFamily(a: string, b: string) {
+  return !!SCRIPT_FAMILY[a] && SCRIPT_FAMILY[a] === SCRIPT_FAMILY[b];
+}
+
 /** A translation into `target` may not arrive in another script. Kanji-only Japanese still counts as Japanese. */
 export function translationFitsLanguage(text: string, target: string): boolean {
   const script = scriptLanguage(text);
   if (!script || script === target) return true;
   if (target === 'ja' && script === 'zh') return true;
+  if (sameScriptFamily(script, target)) return true;
   return false;
 }
 
+/** True when a café draft slipped into another language and should be translated before it is shown. */
+export function draftNeedsTranslation(text: string, wanted: string): boolean {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (!clean || !wanted) return false;
+  if (!translationFitsLanguage(clean, wanted)) return true;
+  return detectLanguageHeuristic(clean, wanted) !== wanted;
+}
+
 export function detectLanguageHeuristic(text: string, fallback = 'en'): string {
-  for (const [re, lang] of SCRIPTS) if (re.test(text)) return lang;
+  for (const [re, lang] of SCRIPTS) {
+    if (!re.test(text)) continue;
+    if (sameScriptFamily(lang, fallback)) return fallback;
+    return lang;
+  }
   const words = text.toLowerCase().normalize('NFC').match(/[\p{L}']+/gu) ?? [];
   if (!words.length) return fallback;
   let best = fallback;

@@ -1,3 +1,4 @@
+import { languageName } from '@conversa/shared';
 import type { AuthUser } from '../auth';
 import { HttpError } from '../http';
 import { sanitizeUntrusted } from './safety';
@@ -56,7 +57,10 @@ async function postSpeech(url: string, token: string, body: string) {
 /** Tells speech-to-text the table subject so near-miss words land on the topic. */
 export function speechPrompt(language: string, topic: string) {
   const lang = language.trim();
-  const langHint = lang ? ` The speaker is using ${lang}.` : '';
+  const named = lang ? languageName(lang) : '';
+  const langHint = named
+    ? ` The speaker is using ${named}. Write the transcript in ${named} only. Do not translate the words into English or any other language.`
+    : '';
   const subject = sanitizeUntrusted(topic, 300);
   const topicHint = subject
     ? ` The café table is about: ${subject}. When a spoken word sounds like a word from that subject, write the subject word. Write only the sentence they spoke. Do not invent a new on-topic line. If they clearly left the subject, keep their words.`

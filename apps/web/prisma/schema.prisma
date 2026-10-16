@@ -457,10 +457,20 @@ model WorldConversation {
   messages       WorldMessage[]
   signals        WorldSignal[]
   links          WorldPeerLink[]
+  board          WorldBoard?
 
   @@index([userAId, status])
   @@index([userBId, status])
   @@index([status, endsAt])
+}
+
+/** Shared drawing for one table hour. Discarded when the table ends. */
+model WorldBoard {
+  conversationId String             @id
+  payload        String             // [enc] json { elements }
+  version        Int                @default(1)
+  updatedAt      DateTime           @updatedAt
+  conversation   WorldConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 }
 
 // Encrypted café lines. Kept only while the hour is active, then deleted.

@@ -5,6 +5,7 @@ import { LANGUAGE_MODES, STYLES, isRtl, languageName, type ReplyResponse } from 
 import { Alert, Badge, CopyButton, Field, Spinner, useToast } from '@/components/ui';
 import { LanguageSelect } from '@/components/LanguageSelect';
 import { api } from '@/lib/client';
+import { bump, live } from '@/lib/table-lanes';
 
 type Contact = {
   id: string;
@@ -42,20 +43,30 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
   const [tab, setTab] = useState<'memory' | 'settings'>('memory');
   const [toast, show] = useToast();
   const bottom = useRef<HTMLDivElement>(null);
+  const loadSlot = useRef({ current: 0 });
 
   const load = useCallback(async () => {
+    const token = bump(loadSlot.current);
     const d = await api(`/api/contacts/${id}`);
+    if (!live(loadSlot.current, token)) return false;
     setContact(d.contact);
     setMessages(d.messages);
     setMemories(d.memories);
+    return true;
   }, [id]);
 
   useEffect(() => {
-    load().then(() => {
-      const q = new URLSearchParams(window.location.search);
-      if (q.get('openers')) genOpeners();
-      if (q.get('reply')) getReplies();
-    });
+    load()
+      .then((ok) => {
+        if (!ok) return;
+        const q = new URLSearchParams(window.location.search);
+        if (q.get('openers')) genOpeners();
+        if (q.get('reply')) getReplies();
+      })
+      .catch(() => {});
+    return () => {
+      bump(loadSlot.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
   useEffect(() => bottom.current?.scrollIntoView({ behavior: 'smooth' }), [messages.length]);
@@ -79,7 +90,7 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
       setDrafts(r.suggestions.map((s) => s.text));
       setIncoming('');
       setOpeners(null);
-      await load();
+      void load();
     });
 
   const genOpeners = () =>
@@ -96,14 +107,14 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
       setReply(null);
       setOpeners(null);
       show('Logged as sent');
-      await load();
+      void load();
     });
 
   const logMine = () =>
     run('log', async () => {
       await api(`/api/contacts/${id}/messages`, { body: { direction: 'OUT', text: incoming.trim() } });
       setIncoming('');
-      await load();
+      void load();
     });
 
   async function patch(data: Partial<Contact>) {

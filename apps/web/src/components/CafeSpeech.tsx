@@ -222,8 +222,10 @@ export const DictationButton = forwardRef<
   const baseRef = useRef('');
   const valueRef = useRef(value);
   const topicRef = useRef(topic);
+  const langRef = useRef(lang);
   valueRef.current = value;
   topicRef.current = topic;
+  langRef.current = lang;
 
   function setPhaseNow(next: 'idle' | 'asking' | 'listening') {
     listeningRef.current = next === 'listening';
@@ -299,6 +301,10 @@ export const DictationButton = forwardRef<
       : new MediaRecorder(stream, { audioBitsPerSecond: 24000 });
     rec.ondataavailable = (ev) => {
       if (ev.data?.size) chunksRef.current.push(ev.data);
+      if (chunksRef.current.length > 24) {
+        const type = rec.mimeType || chunksRef.current[0]?.type || 'audio/webm';
+        chunksRef.current = [new Blob(chunksRef.current, { type })];
+      }
     };
     recorderRef.current = rec;
     rec.start(250);
@@ -362,7 +368,7 @@ export const DictationButton = forwardRef<
     liveBusyRef.current = true;
     const gen = ++liveGenRef.current;
     try {
-      const said = await transcribeClip(blob, lang, topicRef.current);
+      const said = await transcribeClip(blob, langRef.current, topicRef.current);
       if (!shouldPaintLiveTranscript(gen, liveGenRef.current, said)) return;
       if (!listeningRef.current && !stoppingRef.current) return;
       heardRef.current = said;
@@ -412,6 +418,7 @@ export const DictationButton = forwardRef<
     liveRef.current = true;
     return () => {
       liveRef.current = false;
+      liveGenRef.current += 1;
       listeningRef.current = false;
       releaseMic();
     };
@@ -481,6 +488,7 @@ export const DictationButton = forwardRef<
     const gen = liveGenRef.current;
     const base = baseRef.current;
     releaseMic();
+    if (!liveRef.current) return;
     setPhaseNow('idle');
     if (already) return;
     if (blob.size < 200) {
@@ -488,11 +496,12 @@ export const DictationButton = forwardRef<
       return;
     }
     try {
-      const said = await transcribeClip(blob, lang, topicRef.current);
-      if (gen !== liveGenRef.current) return;
+      const said = await transcribeClip(blob, langRef.current, topicRef.current);
+      if (!liveRef.current || gen !== liveGenRef.current) return;
       if (said) onChange(joinDictation(base, said));
       else onError?.(unsupported);
     } catch (err) {
+      if (!liveRef.current || gen !== liveGenRef.current) return;
       onError?.(err instanceof Error ? err.message : unsupported);
     }
   }

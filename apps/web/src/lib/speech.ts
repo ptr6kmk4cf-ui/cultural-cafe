@@ -118,6 +118,36 @@ export function visibleLine(raw: string) {
   return last || text;
 }
 
+export type ComposePair = { my: string; their: string };
+
+export function emptyComposePair(): ComposePair {
+  return { my: '', their: '' };
+}
+
+/** A new typed or suggested line belongs to the view you are in. The other view is stale. */
+export function composePairFromEdit(inTheirs: boolean, value: string): ComposePair {
+  return inTheirs ? { my: '', their: value } : { my: value, their: '' };
+}
+
+/** Keep both sides when you only switch view, so the unsent line can flip like their messages. */
+export function composePairFromSwitch(pair: ComposePair, fromTheirs: boolean, current: string): ComposePair {
+  return fromTheirs ? { ...pair, their: current } : { ...pair, my: current };
+}
+
+export function composeAfterSwitch(pair: ComposePair, toTheirs: boolean): { text: string; needsTranslation: boolean } {
+  const cached = (toTheirs ? pair.their : pair.my).replace(/\s+/g, ' ').trim();
+  if (cached) return { text: cached, needsTranslation: false };
+  const source = (toTheirs ? pair.my : pair.their).replace(/\s+/g, ' ').trim();
+  return { text: source, needsTranslation: !!source };
+}
+
+/** Fill the idle side of a draft so a language switch does not wait. */
+export function fillComposeOther(pair: ComposePair, fromTheirs: boolean, other: string): ComposePair {
+  const next = other.replace(/\s+/g, ' ').trim();
+  if (!next) return pair;
+  return fromTheirs ? { ...pair, my: pair.my || next } : { ...pair, their: pair.their || next };
+}
+
 /** The words this person should hear, in a language they can follow. */
 export function spokenLine(m: {
   mine: boolean;
@@ -126,9 +156,12 @@ export function spokenLine(m: {
   translation?: string | null;
   translationLang?: string | null;
   myLanguage: string;
+  /** Read and hear their original, not the translation into your language. */
+  inTheirLanguage?: boolean;
 }) {
   const original = visibleLine(m.text);
   if (m.mine) return { text: original, lang: m.language || m.myLanguage };
+  if (m.inTheirLanguage) return { text: original, lang: m.language || m.myLanguage };
   const translated = visibleLine(m.translation || '');
   if (translated) return { text: translated, lang: m.translationLang || m.myLanguage };
   return { text: original, lang: m.language || m.myLanguage };

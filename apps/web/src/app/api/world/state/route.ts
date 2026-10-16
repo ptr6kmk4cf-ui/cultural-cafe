@@ -14,12 +14,11 @@ import {
   touchPresenceIfStale,
   tryOfferFriendHours,
 } from '@/lib/services/world';
-import { syncCafeGuests } from '@/lib/services/cafe-guests';
+import { warmCafeGuests } from '@/lib/services/cafe-guests';
 
 export const GET = route(async (req) => {
   const user = await requireUser(req);
-  await expireStale();
-  await syncCafeGuests();
+  await Promise.all([expireStale(), warmCafeGuests()]);
   let profile = await getOrCreateProfile(user.id);
   profile = await touchPresenceIfStale(profile);
   if (profile.invitedByUserId) await tryOfferFriendHours(user.id);

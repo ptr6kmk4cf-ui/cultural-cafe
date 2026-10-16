@@ -4,7 +4,9 @@ import { detectSensitiveRequest, detectStopRequest, sanitizeUntrusted } from '..
 import { decrypt, encrypt } from '../crypto';
 import { db } from '../db';
 import { HttpError, notFound } from '../http';
-import { writeCafeGuestLine } from '../ai/tasks';
+import { draftNeedsTranslation } from '../ai/lang';
+import { translateText, writeCafeGuestLine } from '../ai/tasks';
+import { pool } from '../table-lanes';
 import { contentWords, guestLineUsable, lastSpokenLine, tableSubject } from '../table-reply';
 import { CROWD, type CrowdPerson } from '../cafe-crowd';
 import { VOICES, type GuestVoice } from '../cafe-voices';
@@ -450,6 +452,13 @@ export function syncCafeGuests() {
   return running;
 }
 
+/** Wait for guests only on a cold café. A warm café refreshes them in the background. */
+export async function warmCafeGuests() {
+  const n = await db.user.count({ where: { synthetic: true } });
+  if (n < 20) await syncCafeGuests();
+  else void syncCafeGuests();
+}
+
 async function deleteLooseCafeAccounts() {
   const loose = await db.user.findMany({
     where: { synthetic: false, email: { endsWith: '@culturalcafe.test' } },
@@ -586,13 +595,19 @@ async function paintGuests() {
     },
   });
   const byEmail = new Map(rows.map((row) => [row.email, row]));
+  const missing = GUESTS.filter((guest) => !byEmail.get(guest.email));
+  const created = new Map<string, string>();
+  await pool(missing, 8, async (guest) => {
+    const id = await ensureGuest(guest);
+    if (id) created.set(guest.email, id);
+  });
   const ready: { guest: Guest; id: string; row?: GuestRow }[] = [];
   for (const guest of GUESTS) {
     const row = byEmail.get(guest.email);
     if (row && !row.synthetic) continue;
     if (row) ready.push({ guest, id: row.id, row });
     else {
-      const id = await ensureGuest(guest);
+      const id = created.get(guest.email);
       if (id) ready.push({ guest, id });
     }
   }
@@ -608,25 +623,26 @@ async function paintGuests() {
     seatedIds.add(hour.userAId);
     seatedIds.add(hour.userBId);
   }
+  const drifted = ready.filter((item) => guestDrifted(item.guest, item.row));
+  await pool(drifted, 8, async (item) => {
+    await paintGuestIdentity(item.id, item.guest);
+    const bio = encrypt(item.guest.bio);
+    await db.worldProfile.upsert({
+      where: { userId: item.id },
+      update: { city: item.guest.city, country: item.guest.country, bio },
+      create: {
+        userId: item.id,
+        inviteCode: inviteCode(),
+        city: item.guest.city,
+        country: item.guest.country,
+        bio,
+        optedIn: false,
+      },
+    });
+  });
   const free: string[] = [];
   const seated: string[] = [];
   for (const item of ready) {
-    if (guestDrifted(item.guest, item.row)) {
-      await paintGuestIdentity(item.id, item.guest);
-      const bio = encrypt(item.guest.bio);
-      await db.worldProfile.upsert({
-        where: { userId: item.id },
-        update: { city: item.guest.city, country: item.guest.country, bio },
-        create: {
-          userId: item.id,
-          inviteCode: inviteCode(),
-          city: item.guest.city,
-          country: item.guest.country,
-          bio,
-          optedIn: false,
-        },
-      });
-    }
     if (seatedIds.has(item.id)) seated.push(item.id);
     else free.push(item.id);
   }
@@ -715,6 +731,34 @@ function packGuestLine(
   };
 }
 
+/** Keep the spoken original in their language. English (or the reader's language) is the translation. */
+export function nativeGuestText(
+  draft: string,
+  translated: string | null | undefined,
+  fallback: string,
+  guestLang?: string,
+) {
+  const spoken = (translated || '').replace(/\s+/g, ' ').trim();
+  const backup = fallback.replace(/\s+/g, ' ').trim();
+  const reader = draft.replace(/\s+/g, ' ').trim();
+  const candidates = [spoken, backup].filter((line, i, all) => line && all.indexOf(line) === i);
+  if (guestLang) {
+    const fit = candidates.find((line) => !draftNeedsTranslation(line, guestLang));
+    if (fit) return fit;
+  }
+  if (!spoken || spoken.toLowerCase() === reader.toLowerCase()) return backup || spoken;
+  if (guestLang && draftNeedsTranslation(spoken, guestLang)) return backup || spoken;
+  return spoken;
+}
+
+/** The guest writes from their own originals, and from what they can read of you. */
+export function guestWriterHistory(turns: { mine: boolean; text: string; translation?: string | null }[]) {
+  return turns.map((turn) => ({
+    mine: turn.mine,
+    text: (turn.mine ? turn.translation || turn.text : turn.text).replace(/\s+/g, ' ').trim(),
+  }));
+}
+
 /** Fixed guest lines. English comes from the catalog, never from a translator. */
 export function scriptedGuestTurn(email: string, history: GuestTurn[], humanLang = 'en', topic = '') {
   const guest = GUESTS.find((item) => item.email === email);
@@ -748,18 +792,20 @@ async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[],
   const latest = lastSpokenLine([...turns].reverse().find((turn) => turn.mine)?.text ?? '');
   const stop = !!latest && (detectStopRequest(latest) || detectSensitiveRequest(latest));
   if (!scripted || stop) return scripted;
-  const visible = turns.map((turn) => ({
+  const visible = guestWriterHistory(turns);
+  const already = visible.filter((turn) => !turn.mine).map((turn) => turn.text);
+  const readerHistory = turns.map((turn) => ({
     mine: turn.mine,
     text: turn.mine ? turn.text : (turn.translation || turn.text),
   }));
-  const already = visible.filter((turn) => !turn.mine).map((turn) => turn.text);
+  const alreadyRead = readerHistory.filter((turn) => !turn.mine).map((turn) => turn.text);
   try {
     const account = await db.user.findUnique({
       where: { id: userId },
       select: { id: true, email: true, name: true, role: true, plan: true },
     });
     if (!account) return scripted;
-    const draft = await writeCafeGuestLine({
+    const native = await writeCafeGuestLine({
       user: account,
       name: guest.name,
       city: guest.city,
@@ -767,16 +813,50 @@ async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[],
       bio: guest.bio,
       interests: guest.interests,
       personality: guest.personality,
-      humanLang,
+      humanLang: guest.language,
       topic,
       history: visible,
     });
     const sources = [latest, topic].filter(Boolean);
-    if (!guestLineUsable(draft, humanLang, already, sources)) return scripted;
+    if (guest.language === humanLang) {
+      if (!guestLineUsable(native, humanLang, already, sources)) return scripted;
+      return { text: native, language: humanLang, translation: null, translationLang: null, closed: false };
+    }
+    let reader = '';
+    try {
+      const t = await translateText(account, native, humanLang);
+      reader = (t.translation || '').trim();
+    } catch {
+      reader = '';
+    }
+    if (!reader || reader.toLowerCase() === native.replace(/\s+/g, ' ').trim().toLowerCase()) {
+      const draft = await writeCafeGuestLine({
+        user: account,
+        name: guest.name,
+        city: guest.city,
+        country: guest.country,
+        bio: guest.bio,
+        interests: guest.interests,
+        personality: guest.personality,
+        humanLang,
+        topic,
+        history: readerHistory,
+      });
+      if (!guestLineUsable(draft, humanLang, alreadyRead, sources)) return scripted;
+      reader = draft;
+    } else if (!guestLineUsable(reader, humanLang, alreadyRead, sources)) {
+      return scripted;
+    }
+    let text = nativeGuestText(reader, native, scripted.text, guest.language);
+    if (draftNeedsTranslation(text, guest.language)) {
+      const t = await translateText(account, text, guest.language).catch(() => null);
+      const next = t?.translation?.replace(/\s+/g, ' ').trim();
+      if (next && !draftNeedsTranslation(next, guest.language)) text = next;
+    }
     return {
-      text: draft,
-      language: humanLang,
-      translation: draft,
+      text,
+      language: guest.language,
+      translation: reader,
       translationLang: humanLang,
       closed: false,
     };

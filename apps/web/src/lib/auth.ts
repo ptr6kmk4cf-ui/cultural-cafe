@@ -83,6 +83,10 @@ function refererOrigin(referer: string | null) {
 function allowedOrigins() {
   const origin = appOrigin();
   const allowed = new Set([origin]);
+  if (process.env.NODE_ENV !== 'production') {
+    allowed.add('http://localhost:5173');
+    allowed.add('http://127.0.0.1:5173');
+  }
   try {
     const u = new URL(origin);
     if (u.hostname.startsWith('www.')) allowed.add(`${u.protocol}//${u.hostname.slice(4)}`);

@@ -4,7 +4,7 @@ import { cafePromptFor, cafePromptFromPool } from '@conversa/shared';
 import { icePayload, parseSignalBody, signalPhase } from '../world-signal';
 import { CROWD } from '../cafe-crowd';
 import { VOICES } from '../cafe-voices';
-import { cafeGuestEmails, guestFollowUp, guestSlots, hardcodedTableReply, isLooseCafeEmail, nextHardcodedTableLine, scriptedGuestTurn } from './cafe-guests';
+import { cafeGuestEmails, guestFollowUp, guestSlots, guestWriterHistory, hardcodedTableReply, isLooseCafeEmail, nativeGuestText, nextHardcodedTableLine, scriptedGuestTurn } from './cafe-guests';
 import { INVITE_CODE_LENGTH, firstName, friendInviteMessage, friendJoinPath, isInviteCode, newInviteCode, normalizeInviteCode } from './world';
 
 test('Old test accounts are not café people', () => {
@@ -127,6 +127,42 @@ test('A café guest answers the last sentence, not an older question still in th
   );
   assert.match(answer?.translation ?? '', /Tram 28/);
   assert.equal(/fish|brioche|visitor/i.test(answer?.translation ?? ''), false);
+});
+
+test('a guest line keeps their words as the original, not the English copy', () => {
+  const hello = scriptedGuestTurn('guest.amina@culturalcafe.invalid', [], 'en');
+  assert.match(hello?.text ?? '', /Habari|chai|mkate/);
+  assert.match(hello?.translation ?? '', /Hello from Nairobi|tea and bread/i);
+  assert.equal(hello?.language, 'sw');
+  assert.equal(nativeGuestText('Mornings smell like tea.', 'Mornings smell like tea.', 'Habari asubuhi.'), 'Habari asubuhi.');
+  assert.equal(nativeGuestText('Mornings smell like tea.', 'Asubuhi ina harufu ya chai.', 'Habari asubuhi.'), 'Asubuhi ina harufu ya chai.');
+  assert.equal(
+    nativeGuestText(
+      'That sounds great. Tell me more about Sunday.',
+      'That sounds delicious. Tell me more about Sunday.',
+      'Habari asubuhi.',
+      'sw',
+    ),
+    'Habari asubuhi.',
+  );
+  assert.equal(
+    nativeGuestText(
+      'In Kathmandu, Garden is still the part I can describe.',
+      'मेरो ठाउँमा बगैचा अझै छ।',
+      'Tea near a temple in Kathmandu is a slow hour I do not fill with plans.',
+      'ne',
+    ),
+    'मेरो ठाउँमा बगैचा अझै छ।',
+  );
+});
+
+test('the guest writes from their own words and the translation they can read', () => {
+  const thread = guestWriterHistory([
+    { mine: false, text: 'Habari jumapili.', translation: 'Hello on Sunday.' },
+    { mine: true, text: 'On Sunday I walk by the river.', translation: 'Jumapili natembea kando ya mto.' },
+  ]);
+  assert.equal(thread[0].text, 'Habari jumapili.');
+  assert.equal(thread[1].text, 'Jumapili natembea kando ya mto.');
 });
 
 test('A guest hello is the written English line, not a translation', () => {

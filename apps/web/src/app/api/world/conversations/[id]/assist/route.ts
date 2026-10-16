@@ -25,6 +25,7 @@ export const POST = route<{ id: string }>(async (req, { id }) => {
         )
         .max(400),
       auto: z.boolean().optional(),
+      inTheirLanguage: z.boolean().optional(),
     }),
   );
   rateLimit(`world-assist:${user.id}`, 20, 60_000);
@@ -44,10 +45,12 @@ export const POST = route<{ id: string }>(async (req, { id }) => {
   const latestRaw = [...theirs].reverse()[0] ?? '';
   const worth = lineWorthReading(theirs);
   const blocked = !!latestRaw && (detectStopRequest(latestRaw) || detectSensitiveRequest(latestRaw));
+  const writeLang =
+    b.inTheirLanguage && peer?.language && peer.language !== lang.myLanguage ? peer.language : lang.myLanguage;
   const r = await generateWorldReply({
     user,
     persona,
-    myLanguage: lang.myLanguage,
+    myLanguage: writeLang,
     peerName: peer?.name ?? '',
     peerCity: [peer?.city, peer?.country].filter(Boolean).join(', '),
     myCity: place,
@@ -56,7 +59,11 @@ export const POST = route<{ id: string }>(async (req, { id }) => {
     auto: !!b.auto,
   });
   let text = r.text.trim();
-  if (!blocked && (draftEchoes(text, worth, topic) || !staysOnTable(text, worth, topic))) {
+  if (
+    writeLang === lang.myLanguage &&
+    !blocked &&
+    (draftEchoes(text, worth, topic) || !staysOnTable(text, worth, topic))
+  ) {
     text = replyAboutTheirLine({ latest: worth, topic, place });
   }
   return json({

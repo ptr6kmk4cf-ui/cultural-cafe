@@ -13,7 +13,7 @@ import { detectLanguageHeuristic, normalizeLang } from '../ai/lang';
 import { translateText } from '../ai/tasks';
 import { detectSensitiveRequest } from '../ai/safety';
 import { parseSignalBody, signalPhase } from '../world-signal';
-import { isLooseCafeEmail, looseCafeUserFilter, syncCafeGuests } from './cafe-guests';
+import { isLooseCafeEmail, looseCafeUserFilter, warmCafeGuests } from './cafe-guests';
 
 export const WORLD_SESSION_MS = 60 * 60_000;
 export const WORLD_INVITE_MS = 10 * 60_000;
@@ -145,6 +145,7 @@ async function wipeHourRecords(ids: string[]) {
     db.worldMessage.deleteMany({ where: { conversationId: { in: ids } } }),
     db.worldSignal.deleteMany({ where: { conversationId: { in: ids } } }),
     db.worldPeerLink.deleteMany({ where: { conversationId: { in: ids } } }),
+    db.worldBoard.deleteMany({ where: { conversationId: { in: ids } } }),
   ]);
 }
 
@@ -603,8 +604,7 @@ export async function serializeConversations(rows: WorldConversation[], me: stri
 }
 
 export async function joinQueue(user: AuthUser) {
-  await expireStale(true);
-  await syncCafeGuests();
+  await Promise.all([expireStale(true), warmCafeGuests()]);
   const profile = await getOrCreateProfile(user.id);
   if (!profile.optedIn) throw new HttpError(400, 'Save your profile first. Then you can meet someone.', 'world_opt_in');
   if (!profile.city.trim()) throw new HttpError(400, 'Add your city on your profile before you meet someone.', 'world_city');
@@ -1068,7 +1068,7 @@ export async function pullSignals(userId: string, conversationId: string, after?
 }
 
 export async function listPeople(viewerId: string) {
-  await syncCafeGuests();
+  await warmCafeGuests();
   const [banned, met] = await Promise.all([blockedIds(viewerId), metPartnerIds(viewerId)]);
   const metPeople = met.size
     ? await db.user.findMany({ where: { id: { in: [...met] }, synthetic: false }, select: { id: true } })

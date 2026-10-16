@@ -92,7 +92,12 @@ export function RequestNotice() {
       else chimeFor(waitingSound.current);
     };
     window.addEventListener('pointerdown', unlock);
-    return () => window.removeEventListener('pointerdown', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      const ctx = audioContext.current;
+      audioContext.current = null;
+      void ctx?.close();
+    };
     // The unlock listener only needs the refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

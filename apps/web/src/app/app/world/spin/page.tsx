@@ -15,9 +15,17 @@ export default function SpinPage() {
   const [busy, setBusy] = useState('');
 
   useEffect(() => {
+    let liveFetch = true;
     api<{ people: WheelPerson[] }>('/api/world/people')
-      .then((data) => setPeople(data.people))
-      .catch((err) => setError((err as Error).message));
+      .then((data) => {
+        if (liveFetch) setPeople(data.people);
+      })
+      .catch((err) => {
+        if (liveFetch) setError((err as Error).message);
+      });
+    return () => {
+      liveFetch = false;
+    };
   }, []);
 
   async function sit(person: WheelPerson) {

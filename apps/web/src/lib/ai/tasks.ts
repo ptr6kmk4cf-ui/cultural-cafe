@@ -5,7 +5,7 @@ import { runAi } from './run';
 import { genderRule, langLine, personaBlock, type Persona } from './persona';
 import { lastSpokenLine, lineWorthReading } from '../table-reply';
 import { SAFETY_RULES, detectSensitiveRequest, detectStopRequest, filterUnsafeSuggestion, looksLikeInjection, sanitizeUntrusted, untrusted } from './safety';
-import { detectLanguageHeuristic, normalizeLang } from './lang';
+import { detectLanguageHeuristic, draftNeedsTranslation, normalizeLang } from './lang';
 import type { AiPart } from './provider';
 
 const langCode = z
@@ -462,7 +462,7 @@ const GuestLineSchema = z.object({
   text: z.preprocess((v) => (typeof v === 'string' ? v.trim().slice(0, 400) : ''), z.string()),
 });
 
-/** One spoken line from a café guest, written directly in the reader's language. */
+/** One spoken line from a café guest, written in `humanLang` on every turn. */
 export async function writeCafeGuestLine(opts: {
   user: AuthUser;
   name: string;
@@ -480,7 +480,7 @@ export async function writeCafeGuestLine(opts: {
   const system = `You are ${opts.name}, texting from ${opts.city}, ${opts.country}. You are one person at one café table, not a guide.
 
 HOW YOU TEXT
-- Write only in ${langLine(opts.humanLang)}. Any other language is thrown away.
+- Write only in ${langLine(opts.humanLang)}. Any other language is thrown away. The table topic and this prompt may be in English; every turn, including later replies, is still ${langLine(opts.humanLang)}.
 - Sound like a text: contractions, one or two sentences, one question at most.
 - TABLE TOPIC (do not leave it): ${opts.topic || 'everyday life where each of you lives'}
 - Answer their last text in the first sentence. Keep one thing they named. Stay on the table topic.
@@ -512,7 +512,13 @@ HOW YOU TEXT
     },
     GuestLineSchema,
   );
-  return data.text.trim();
+  let text = data.text.trim();
+  if (text && draftNeedsTranslation(text, opts.humanLang)) {
+    const t = await translateText(opts.user, text, opts.humanLang).catch(() => null);
+    const next = t?.translation?.replace(/\s+/g, ' ').trim();
+    if (next) text = next;
+  }
+  return text;
 }
 
 export async function generateWorldReply(opts: {
@@ -537,7 +543,7 @@ export async function generateWorldReply(opts: {
 ${SAFETY_RULES}
 
 WORLD RULES
-- Write ONLY in ${langLine(opts.myLanguage)}. The live page will translate it for the other person.
+- Write ONLY in ${langLine(opts.myLanguage)}. Do not write any other language. The table topic and this prompt may be in English; the message itself must still be ${langLine(opts.myLanguage)} on every turn, including later replies.
 - This is a text message from a person at the table, not a paragraph, a speech, or a guidebook.
 - Use contractions. One or two sentences. Start with the answer or the reaction, not with thanks.
 - TABLE TOPIC (do not leave it): ${opts.prompt || 'everyday life where they live'}
@@ -575,12 +581,18 @@ Peer first name: ${opts.peerName || 'them'}. They said they are in: ${opts.peerC
     },
     WorldReplySchema,
   );
-  const unsafe = !filterUnsafeSuggestion(data.text, opts.persona.aboutMe);
+  let text = data.text.trim();
+  if (text && draftNeedsTranslation(text, opts.myLanguage)) {
+    const t = await translateText(opts.user, text, opts.myLanguage).catch(() => null);
+    const next = t?.translation?.replace(/\s+/g, ' ').trim();
+    if (next) text = next;
+  }
+  const unsafe = !filterUnsafeSuggestion(text, opts.persona.aboutMe);
   const core = (value: string) => value.replace(/^“[^”]{0,120}”\s*—\s*/, '').replace(/\s+/g, ' ').trim();
-  const repeated = !!core(data.text) && opts.history.some((m) => m.mine && core(m.text) === core(data.text));
-  const hold = mustHold || data.hold || !data.text.trim() || unsafe || repeated;
+  const repeated = !!core(text) && opts.history.some((m) => m.mine && core(m.text) === core(text));
+  const hold = mustHold || data.hold || !text || unsafe || repeated;
   return {
-    text: data.text.trim(),
+    text,
     hold,
     holdReason: mustHold
       ? detectStopRequest(latestRaw)
