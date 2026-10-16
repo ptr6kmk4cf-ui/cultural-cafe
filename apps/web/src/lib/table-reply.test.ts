@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { correctSpokenLine, draftEchoes, guestLineRepeats, guestLineUsable, isClosingLine, lastSpokenLine, lineWorthReading, replyAboutTheirLine, replyReads, staysOnTable } from './table-reply';
+import { correctSpokenLine, draftEchoes, guestLineFresh, guestLineRepeats, guestLineUsable, isClosingLine, lastSpokenLine, lineWorthReading, replyAboutTheirLine, replyReads, staysOnTable } from './table-reply';
 
 test('a stock thank-you does not count as reading the table', () => {
   const stock = 'Thank you for telling me that. What is a normal day like in Lyon, France?';
@@ -58,6 +58,18 @@ test('a stiff or wrong-language guest line is not shown', () => {
   assert.equal(guestLineUsable(already[0], 'en', already, sources), false);
   assert.equal(
     guestLineUsable('We say a word first, then a small wave. The sea is loud enough that nobody needs a big hello.', 'en', already, sources),
+    true,
+  );
+});
+
+test('an English catalog line is not a Croatian guest original', () => {
+  assert.equal(guestLineFresh('If I miss the market, the rest of the day feels borrowed.', 'hr', []), false);
+  assert.equal(
+    guestLineFresh(
+      'Ako propustim tržnicu, ostatak dana mi se čini posuđen. Gdje ti jedeš voće?',
+      'hr',
+      [],
+    ),
     true,
   );
 });

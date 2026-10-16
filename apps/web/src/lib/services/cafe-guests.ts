@@ -878,6 +878,20 @@ function scriptedIfFresh(scripted: ScriptedLine, already: string[], guest: Guest
   };
 }
 
+/** Crowd catalogs are English. Their language still has to show the guest's language. */
+async function originalInGuestLanguage(
+  account: AuthUser | { id: string; email: string; name: string; role: AuthUser['role']; plan: AuthUser['plan'] },
+  text: string,
+  guestLang: string,
+) {
+  const spoken = text.replace(/\s+/g, ' ').trim();
+  if (!spoken || !draftNeedsTranslation(spoken, guestLang)) return spoken;
+  const t = await translateText(account, spoken, guestLang).catch(() => null);
+  const next = t?.translation?.replace(/\s+/g, ' ').trim();
+  if (next && !draftNeedsTranslation(next, guestLang)) return next;
+  return spoken;
+}
+
 /** A spoken line when the model can write one. The written catalog is the backup. */
 async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[], humanLang: string, topic: string) {
   const scripted = scriptedGuestTurn(guest.email, turns, humanLang, topic);
@@ -913,8 +927,15 @@ async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[],
     };
     if (guest.language === humanLang) {
       const native = await uniqueGuestDraft({ ...voice, humanLang, history: visible, already: avoid });
-      if (native) return { text: native, language: humanLang, translation: null, translationLang: null, closed: false };
-      return scriptedIfFresh(scripted, avoid, guest, humanLang);
+      if (native) {
+        const text = await originalInGuestLanguage(account, native, guest.language);
+        return { text, language: humanLang, translation: null, translationLang: null, closed: false };
+      }
+      const fallback = scriptedIfFresh(scripted, avoid, guest, humanLang);
+      return {
+        ...fallback,
+        text: await originalInGuestLanguage(account, fallback.text, guest.language),
+      };
     }
     const native = await uniqueGuestDraft({
       ...voice,
@@ -937,7 +958,11 @@ async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[],
       if (draft) reader = draft;
     }
     if (!reader || !guestLineFresh(reader, humanLang, avoid)) {
-      return scriptedIfFresh(scripted, avoid, guest, humanLang);
+      const fallback = scriptedIfFresh(scripted, avoid, guest, humanLang);
+      return {
+        ...fallback,
+        text: await originalInGuestLanguage(account, fallback.text, guest.language),
+      };
     }
     let text = nativeGuestText(reader, spoken, scripted.text, guest.language);
     if (!spoken || guestLineRepeats(text, already) || draftNeedsTranslation(text, guest.language)) {
@@ -945,8 +970,13 @@ async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[],
       const next = t?.translation?.replace(/\s+/g, ' ').trim();
       if (next && !draftNeedsTranslation(next, guest.language) && !guestLineRepeats(next, already)) text = next;
     }
+    text = await originalInGuestLanguage(account, text, guest.language);
     if (guestLineRepeats(text, already) || guestLineRepeats(reader, avoid)) {
-      return scriptedIfFresh(scripted, avoid, guest, humanLang);
+      const fallback = scriptedIfFresh(scripted, avoid, guest, humanLang);
+      return {
+        ...fallback,
+        text: await originalInGuestLanguage(account, fallback.text, guest.language),
+      };
     }
     return {
       text,
@@ -957,7 +987,8 @@ async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[],
     };
   } catch (err) {
     console.error('[cafe-guest]', err instanceof Error ? err.message : err);
-    return scriptedIfFresh(scripted, avoid, guest, humanLang);
+    const fallback = scriptedIfFresh(scripted, avoid, guest, humanLang);
+    return fallback;
   }
 }
 
@@ -988,13 +1019,20 @@ export async function replyAsCafeGuest(userId: string, conversationId: string, h
   })).filter((turn) => turn.text);
   const line = await spokenGuestLine(userId, guest, turns, humanLang, topic);
   if (!line) throw notFound();
+  const account = await db.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, name: true, role: true, plan: true },
+  });
+  const text = account
+    ? await originalInGuestLanguage(account, line.text, guest.language)
+    : line.text;
   await db.worldPeerLink.upsert({
     where: { conversationId_userId: { conversationId, userId: otherId } },
     create: { conversationId, userId: otherId, phase: 'open' },
     update: { phase: 'open' },
   });
   return {
-    message: packGuestLine(guest, line.text, line.translation, line.translationLang, line.closed),
+    message: packGuestLine(guest, text, line.translation, line.translationLang, line.closed),
     closed: line.closed,
   };
 }

@@ -111,6 +111,24 @@ test('a later English draft in their language still needs translation', () => {
   assert.equal(draftNeedsTranslation('मेरो ठाउँमा बगैचा छ। तिम्रोमा कस्तो छ?', 'ne'), false);
   assert.equal(detectLanguageHeuristic('मेरो ठाउँमा बगैचा छ।', 'ne'), 'ne');
   assert.equal(draftNeedsTranslation('In Kathmandu, Garden is still the part I can describe. How is it where you live?', 'ne'), true);
+  assert.equal(
+    draftNeedsTranslation('If I miss the market, the rest of the day feels borrowed.', 'hr'),
+    true,
+  );
+  assert.equal(
+    draftNeedsTranslation(
+      'Previše voća kao plan mi je super taktika za slobodno popodne. Imaš li ti neko mjesto gdje to voće pojedeš?',
+      'hr',
+    ),
+    false,
+  );
+  assert.equal(
+    detectLanguageHeuristic(
+      'Previše voća kao plan mi je super taktika za slobodno popodne. Imaš li ti neko mjesto?',
+      'hr',
+    ),
+    'hr',
+  );
 });
 
 test('an English reader does not keep a Chinese translation', () => {

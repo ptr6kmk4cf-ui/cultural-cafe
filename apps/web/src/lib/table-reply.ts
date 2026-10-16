@@ -1,4 +1,4 @@
-import { translationFitsLanguage } from './ai/lang';
+import { draftNeedsTranslation, translationFitsLanguage } from './ai/lang';
 
 /** A guest goodbye is not something to thank them for. A real stop request still is. */
 export function isClosingLine(text: string) {
@@ -58,6 +58,7 @@ export function guestLineFresh(text: string, humanLang: string, already: string[
   if (STIFF.test(clean)) return false;
   if ((clean.match(/\?/g) ?? []).length > 1) return false;
   if (!translationFitsLanguage(clean, humanLang)) return false;
+  if (draftNeedsTranslation(clean, humanLang)) return false;
   if (already.some((previous) => normGuestLine(previous) === normGuestLine(clean))) return false;
   if (guestLineRepeats(clean, already)) return false;
   return true;

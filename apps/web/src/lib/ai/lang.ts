@@ -1,7 +1,7 @@
 import { LANGUAGE_ALIASES, LANGUAGE_CODES } from '@conversa/shared';
 
 const STOPWORDS: Record<string, string[]> = {
-  en: ['the', 'and', 'you', 'what', 'is', 'are', 'how', 'your', 'have', 'do', 'that', 'this', 'with', 'i', 'my'],
+  en: ['the', 'and', 'you', 'what', 'is', 'are', 'how', 'your', 'have', 'do', 'that', 'this', 'with', 'my', 'of', 'would', 'from', 'about'],
   fr: ['le', 'la', 'les', 'et', 'est', 'tu', 'vous', 'que', 'je', 'pas', 'une', 'des', 'pour', 'avec', 'ça', 'mon', 'ton', 'salut', 'bonjour', 'ce', 'quoi', 'fais', 'oui', 'merci', 'tes', 'mais'],
   es: ['el', 'la', 'los', 'y', 'es', 'que', 'tú', 'qué', 'una', 'para', 'con', 'pero', 'hola', 'yo', 'mi', 'tu', 'muy', 'también'],
   de: ['der', 'die', 'das', 'und', 'ist', 'du', 'ich', 'nicht', 'ein', 'eine', 'mit', 'auch', 'hallo', 'mein', 'dein', 'wie', 'was'],
@@ -21,6 +21,16 @@ const STOPWORDS: Record<string, string[]> = {
   fi: ['ja', 'on', 'minä', 'sinä', 'ei', 'mitä', 'miten', 'moi', 'hei', 'myös', 'kanssa', 'tosi', 'mun', 'sun'],
   sw: ['na', 'ni', 'mimi', 'wewe', 'habari', 'sana', 'kwa', 'je', 'hapana', 'ndiyo', 'yako', 'yangu', 'leo'],
   tl: ['ang', 'ng', 'mga', 'ako', 'ikaw', 'ka', 'ko', 'mo', 'kumusta', 'po', 'naman', 'lang', 'hindi', 'oo', 'sa'],
+  hr: ['što', 'kako', 'gdje', 'kada', 'ili', 'ali', 'kao', 'nije', 'hvala', 'dobro', 'možda', 'treba', 'još', 'već', 'sada', 'ću', 'imaš', 'hoćeš', 'nisam', 'popodne', 'kava', 'mjesto', 'voće', 'slobodno', 'također', 'zašto', 'ovdje', 'volim', 'danas'],
+  sr: ['šta', 'kako', 'gde', 'kada', 'ili', 'ali', 'nije', 'hvala', 'dobro', 'možda', 'treba', 'još', 'već', 'sada', 'hoćeš', 'nisam', 'kafa', 'mesto', 'slobodno', 'takođe', 'zašto', 'ovde', 'volim', 'danas'],
+  bs: ['šta', 'kako', 'gdje', 'kada', 'ili', 'ali', 'nije', 'hvala', 'dobro', 'možda', 'treba', 'još', 'već', 'sada', 'hoćeš', 'nisam', 'kafa', 'mjesto', 'slobodno', 'također', 'zašto', 'ovdje', 'volim', 'danas'],
+  sl: ['kaj', 'kako', 'kje', 'ali', 'hvala', 'dobro', 'mogoče', 'treba', 'še', 'že', 'zdaj', 'imaš', 'kava', 'popoldne', 'prosto', 'ljubljana', 'tudi', 'zakaj', 'tukaj', 'danas', 'danes'],
+  sk: ['ako', 'prečo', 'alebo', 'ale', 'ďakujem', 'dobre', 'možno', 'treba', 'ešte', 'už', 'teraz', 'máš', 'káva', 'popoludní', 'bratislava', 'tiež', 'tu', 'dnes'],
+  lt: ['ir', 'yra', 'aš', 'tu', 'kas', 'kaip', 'taip', 'labas', 'ačiū', 'labai', 'mano', 'tavo', 'vilnius', 'šiandien', 'kodėl', 'čia'],
+  lv: ['un', 'ir', 'es', 'tu', 'kas', 'kā', 'nē', 'sveiki', 'paldies', 'ļoti', 'mans', 'tavs', 'rīga', 'šodien', 'kāpēc', 'šeit'],
+  et: ['ja', 'on', 'ma', 'sa', 'mis', 'kuidas', 'ei', 'tere', 'aitäh', 'väga', 'minu', 'sinu', 'tallinn', 'täna', 'miks', 'siin'],
+  is: ['og', 'er', 'ég', 'þú', 'hvað', 'hvernig', 'nei', 'halló', 'takk', 'mjög', 'minn', 'þinn', 'reykjavík', 'í dag'],
+  ms: ['dan', 'yang', 'saya', 'awak', 'apa', 'tidak', 'ini', 'itu', 'halo', 'juga', 'dengan', 'sangat', 'kuala', 'hari'],
 };
 
 /** Non-Latin scripts, most specific first (e.g. Persian letters before generic Arabic script). */
@@ -104,15 +114,21 @@ export function detectLanguageHeuristic(text: string, fallback = 'en'): string {
   }
   const words = text.toLowerCase().normalize('NFC').match(/[\p{L}']+/gu) ?? [];
   if (!words.length) return fallback;
-  let best = fallback;
-  let bestScore = 0;
-  for (const [lang, list] of Object.entries(STOPWORDS)) {
+  const scoreOf = (lang: string) => {
+    const list = STOPWORDS[lang];
+    if (!list) return 0;
     const set = new Set(list);
-    const score = words.filter((w) => set.has(w)).length;
-    if (score > bestScore) {
-      best = lang;
-      bestScore = score;
-    }
+    return words.filter((w) => set.has(w)).length;
+  };
+  let best = fallback;
+  let bestScore = scoreOf(fallback);
+  for (const lang of Object.keys(STOPWORDS)) {
+    if (lang === fallback) continue;
+    const score = scoreOf(lang);
+    if (score <= bestScore) continue;
+    if (bestScore === 0 && score < 2 && lang !== 'en') continue;
+    best = lang;
+    bestScore = score;
   }
   return best;
 }
