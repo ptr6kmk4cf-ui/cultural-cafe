@@ -1,0 +1,5 @@
+public/board-app
+.agents
+skills-lock.json
+.env
+.env.*
