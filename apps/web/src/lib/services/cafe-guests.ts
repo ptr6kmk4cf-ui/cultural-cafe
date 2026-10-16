@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { detectSensitiveRequest, detectStopRequest, sanitizeUntrusted } from '../ai/safety';
+import type { AuthUser } from '../auth';
 import { decrypt, encrypt } from '../crypto';
 import { db } from '../db';
 import { HttpError, notFound } from '../http';
@@ -820,7 +821,7 @@ export function scriptedGuestTurn(email: string, history: GuestTurn[], humanLang
 }
 
 type GuestDraftOpts = {
-  user: { id: string; email: string; name: string; role: string; plan: string };
+  user: AuthUser;
   guest: Guest;
   humanLang: string;
   topic: string;
