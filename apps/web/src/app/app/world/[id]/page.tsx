@@ -14,6 +14,15 @@ import { bump, live } from '@/lib/table-lanes';
 import { isClosingLine } from '@/lib/table-reply';
 import { useWorldPeer } from '@/lib/world-peer';
 
+/** Pause before a café guest's bubble appears, so a scripted reply does not feel instant. Real peers skip this path. */
+const GUEST_THINK_MS = 1200;
+
+function waitGuestThink(token: number, gen: { current: number }) {
+  return new Promise<boolean>((resolve) => {
+    window.setTimeout(() => resolve(live(gen, token)), GUEST_THINK_MS);
+  });
+}
+
 type Msg = { id: string; seq?: number; mine: boolean; text: string; language: string; translation: string | null; translationLang: string | null; flagged: boolean; createdAt: string };
 type Conv = {
   id: string;
@@ -192,8 +201,9 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     greeted.current = id;
     const token = tableGen.current;
     api(`/api/world/conversations/${id}/guest`, { body: { history: [] } })
-      .then((r) => {
+      .then(async (r) => {
         if (!live(tableGen, token)) return;
+        if (!(await waitGuestThink(token, tableGen))) return;
         const message = r.message as Msg;
         setMsgs((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
       })
@@ -304,8 +314,9 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
       ];
       setMsgs((m) => place(m));
       void api(`/api/world/conversations/${id}/guest`, { body: { history } })
-        .then((reply) => {
+        .then(async (reply) => {
           if (!live(tableGen, token)) return;
+          if (!(await waitGuestThink(token, tableGen))) return;
           setMsgs((m) => (m.some((x) => x.id === reply.message.id) ? m : [...m, reply.message]));
           if (reply.closed) rememberAuto(false);
         })

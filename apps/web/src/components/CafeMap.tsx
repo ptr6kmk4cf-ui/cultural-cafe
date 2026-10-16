@@ -132,7 +132,7 @@ export function CafeMap({
           style={{
             transformOrigin: `${marker.x}px ${marker.y}px`,
             transformBox: 'view-box',
-            animation: 'cafe-pin-in 1.1s ease both',
+            animation: 'cafe-pin-in 0.85s ease both',
           }}
         >
           <text

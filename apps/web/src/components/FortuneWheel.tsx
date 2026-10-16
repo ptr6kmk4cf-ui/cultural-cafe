@@ -13,7 +13,7 @@ const NO_COUNTS = new Map<string, number>();
 
 /** World map, then the country, then the pin, then the window fills in. */
 const REVEAL = ['world', 'country', 'pin', 'window', 'photo', 'name', 'place', 'words', 'bio', 'interests', 'sit'] as const;
-const REVEAL_AT = [0, 1100, 2400, 3600, 4500, 5200, 5900, 6600, 7300, 8000, 8700];
+const REVEAL_AT = [0, 850, 1850, 2800, 3500, 4050, 4600, 5150, 5700, 6250, 6800];
 
 function useReveal(personId: string | null) {
   const [step, setStep] = useState(-1);
@@ -36,7 +36,7 @@ function useReveal(personId: string | null) {
 
 function Slow({ on, children }: { on: boolean; children: ReactNode }) {
   return (
-    <div className={`grid transition-[grid-template-rows,opacity] duration-700 ease-out ${on ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+    <div className={`grid transition-[grid-template-rows,opacity] duration-[550ms] ease-out ${on ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
       <div className="overflow-hidden">
         <div className="pb-1">{children}</div>
       </div>
@@ -174,12 +174,12 @@ export function FortuneWheel({
           <div className="relative aspect-[960/500] min-w-0 flex-1 overflow-hidden rounded-2xl">
             <div
               className={zoomed ? 'pointer-events-none absolute inset-0' : 'absolute inset-0'}
-              style={{ opacity: zoomed ? 0 : 1, transition: 'opacity 1.3s ease' }}
+              style={{ opacity: zoomed ? 0 : 1, transition: 'opacity 1s ease' }}
             >
               <CafeMap selected={null} counts={NO_COUNTS} quiet onSelect={() => {}} />
             </div>
             {country && (
-              <div className="absolute inset-0" style={{ opacity: zoomed ? 1 : 0, transition: 'opacity 1.5s ease' }}>
+              <div className="absolute inset-0" style={{ opacity: zoomed ? 1 : 0, transition: 'opacity 1.15s ease' }}>
                 <CafeMap
                   selected={country}
                   counts={counts}
@@ -192,7 +192,7 @@ export function FortuneWheel({
             )}
           </div>
           <div
-            className={`overflow-hidden transition-all duration-1000 ease-out md:shrink-0 ${seen('window') ? 'max-h-[48rem] w-full opacity-100 md:w-[24rem]' : 'max-h-0 w-0 opacity-0'}`}
+            className={`overflow-hidden transition-all duration-[800ms] ease-out md:shrink-0 ${seen('window') ? 'max-h-[48rem] w-full opacity-100 md:w-[24rem]' : 'max-h-0 w-0 opacity-0'}`}
           >
             <div
               ref={dialogRef}
