@@ -133,6 +133,18 @@ async function main() {
   });
   console.log(`✓ demo user: ${demoEmail}`);
 
+  await upsertUser('lucia@conversa.local', 'Lucía', pw('SEED_WORLD_PASSWORD'), 'USER', {
+    language: 'es',
+    languages: ['es', 'en'],
+    city: 'Mexico City',
+    country: 'Mexico',
+    bio: 'I teach literature in Mexico City and wander markets for breakfast. Happy to swap an evening for yours.',
+    interests: ['literature', 'markets', 'walking', 'cooking', 'travel'],
+    world: true,
+    inCafe: true,
+  });
+  console.log('✓ local traveler: lucia@conversa.local');
+
   if (process.env.ADMIN_EMAIL) {
     await upsertUser(process.env.ADMIN_EMAIL.toLowerCase(), 'Admin', pw('SEED_ADMIN_PASSWORD'), 'ADMIN');
     console.log(`✓ admin user: ${process.env.ADMIN_EMAIL}`);

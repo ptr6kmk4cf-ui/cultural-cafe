@@ -4,7 +4,14 @@ import type { AuthUser } from '../auth';
 import { decrypt, encrypt } from '../crypto';
 import { db } from '../db';
 import { HttpError } from '../http';
-import { peerId, requireParticipant } from './world';
+import { assignTablePrompt } from './cafe-topics';
+import { WORLD_SESSION_MS, activeConversation, endConversation, peerId, requireParticipant } from './world';
+
+const PRACTICE_PARTNER_EMAIL = 'lucia@conversa.local';
+
+function localBoardTools() {
+  return process.env.NODE_ENV !== 'production' && process.env.DEV_TOOLS === 'true';
+}
 
 const MAX_ELEMENTS = 250;
 const MAX_JSON = 180_000;
@@ -126,4 +133,31 @@ export async function translateCafeBoard(user: AuthUser, conversationId: string,
     }),
   );
   return { translations };
+}
+
+/** Local only: sit with the seeded traveler so the board can be tried from one browser. */
+export async function ensurePracticeTable(user: AuthUser) {
+  if (!localBoardTools()) throw new HttpError(404, 'Not found');
+  const partnerEmail =
+    user.email === PRACTICE_PARTNER_EMAIL ? process.env.SEED_DEMO_EMAIL || 'demo@conversa.local' : PRACTICE_PARTNER_EMAIL;
+  const partner = await db.user.findUnique({
+    where: { email: partnerEmail },
+    select: { id: true, synthetic: true },
+  });
+  if (!partner || partner.synthetic || partner.id === user.id) {
+    throw new HttpError(404, 'Seed the local café first (npm run db:seed).', 'no_partner');
+  }
+  const active = await activeConversation(user.id);
+  if (active && (active.userAId === partner.id || active.userBId === partner.id)) {
+    return { id: active.id };
+  }
+  if (active) await endConversation(user.id, active.id);
+  const theirs = await activeConversation(partner.id);
+  if (theirs) await endConversation(partner.id, theirs.id);
+  const [userAId, userBId] = [user.id, partner.id].sort();
+  const created = await db.worldConversation.create({
+    data: { userAId, userBId, endsAt: new Date(Date.now() + WORLD_SESSION_MS) },
+  });
+  const conv = await assignTablePrompt(created.id);
+  return { id: conv.id };
 }

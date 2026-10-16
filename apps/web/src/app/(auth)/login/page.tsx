@@ -7,6 +7,25 @@ import { Alert, Field } from '@/components/ui';
 import { keepBrowserLogin } from '@/lib/browser-login';
 import { api } from '@/lib/client';
 
+function afterLoginPath(next: string | null) {
+  if (next && next.startsWith('/') && !next.startsWith('//')) return next;
+  if (process.env.NODE_ENV !== 'production' && next) {
+    try {
+      const u = new URL(next);
+      if (
+        (u.hostname === 'localhost' || u.hostname === '127.0.0.1') &&
+        u.port === '5173' &&
+        u.pathname.startsWith('/board-app')
+      ) {
+        return u.href;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return '/app';
+}
+
 export default function LoginPage() {
   const { t } = useUi();
   const [email, setEmail] = useState('');
@@ -29,7 +48,7 @@ export default function LoginPage() {
       await api('/api/auth/login', { body: { email, password } });
       await keepBrowserLogin(email, password);
       const next = new URLSearchParams(window.location.search).get('next');
-      window.location.href = next && next.startsWith('/') && !next.startsWith('//') ? next : '/app';
+      window.location.href = afterLoginPath(next);
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);

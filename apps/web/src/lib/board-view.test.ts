@@ -67,12 +67,24 @@ test('viewed boxes swap only the other person\'s text, then restore before share
   assert.equal(viewed[0]?.text, 'The bread is coming out of the oven.');
   assert.equal(viewed[0]?.originalText, 'Le pain sort du four.');
   assert.equal(viewed[1]?.text, 'Hello');
-  const shared = restoreSharedElements(viewed, source);
+  const shared = restoreSharedElements(viewed, source, jacky);
   assert.equal(shared[0]?.text, 'Le pain sort du four.');
   assert.deepEqual(
     boardLinesFromElements(shared).map((line) => line.text),
     ['Le pain sort du four.', 'Hello'],
   );
+});
+
+test('the writer can keep editing their own box; we do not roll their words back', () => {
+  const source: BoardTextElement[] = [
+    { id: 'mine', type: 'text', text: 'Hel', originalText: 'Hel', customData: { authorId: 'jacky', language: 'en' } },
+  ];
+  const typed: BoardTextElement[] = [
+    { id: 'mine', type: 'text', text: 'Hello there', originalText: 'Hel', customData: { authorId: 'jacky', language: 'en' } },
+  ];
+  const shared = restoreSharedElements(typed, source, jacky);
+  assert.equal(shared[0]?.text, 'Hello there');
+  assert.equal(shared[0]?.originalText, 'Hello there');
 });
 
 test('a new text box is stamped with the person who wrote it', () => {

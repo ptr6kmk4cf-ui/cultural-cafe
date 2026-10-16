@@ -158,6 +158,10 @@ export function BoardApp() {
       })
       .catch((err) => {
         if (!live.current) return;
+        if (err instanceof ApiError && err.status === 401) {
+          window.location.href = `${cafe}/login?next=${encodeURIComponent(window.location.href)}`;
+          return;
+        }
         setError(err instanceof Error ? err.message : 'Could not open the board.');
       });
     return () => {
@@ -208,8 +212,10 @@ export function BoardApp() {
         <div>
           <h1>Café board</h1>
           <p>
-            Write in your language.{' '}
-            {boot.me.language !== boot.peerLanguage ? 'They read a translation.' : 'You both read the same words.'}
+            You write in your language.{' '}
+            {boot.me.language !== boot.peerLanguage
+              ? 'They see a translation. You see theirs. Your own words stay as you wrote them.'
+              : 'You both read the same words.'}
           </p>
         </div>
         <a href={`${cafe}/app/world/${table}`}>Back to the table</a>
@@ -234,7 +240,7 @@ export function BoardApp() {
             const who = reader.current;
             if (applying.current || !who || boot.ended) return;
             const stamped = stampNewText(elements as unknown as SceneEl[], who);
-            const shared = restoreSharedElements(stamped, source.current);
+            const shared = restoreSharedElements(stamped, source.current, who);
             source.current = shared;
             saveSoon(shared);
             translateSoon(shared);

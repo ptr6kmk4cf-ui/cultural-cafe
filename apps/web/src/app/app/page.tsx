@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { InviteFriend } from '@/components/InviteFriend';
+import { PracticeTableButton } from '@/components/PracticeTableButton';
 import { WaitingInvites } from '@/components/WaitingInvites';
 import { getCurrentUser } from '@/lib/auth';
 import { db } from '@/lib/db';
@@ -11,7 +13,8 @@ import { localeFromAcceptLanguage } from '@/lib/ui-locale';
 export const dynamic = 'force-dynamic';
 
 export default async function Home() {
-  const user = (await getCurrentUser())!;
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
   const [photos, profile, cafeRows] = await Promise.all([
     db.photo.count({ where: { userId: user.id } }),
     db.worldProfile.findUnique({ where: { userId: user.id } }),
@@ -81,6 +84,7 @@ export default async function Home() {
         </li>
       </ol>
 
+      {process.env.NODE_ENV !== 'production' && <PracticeTableButton />}
       <WaitingInvites />
       {profile?.inviteCode && <InviteFriend code={profile.inviteCode} />}
 

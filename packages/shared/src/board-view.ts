@@ -80,7 +80,11 @@ export function boardLinesFromElements(elements: BoardTextElement[]): BoardLine[
 }
 
 /** Restore originals for anyone else's boxes before we save or send. */
-export function restoreSharedElements<T extends BoardTextElement>(viewed: T[], source: T[]): T[] {
+export function restoreSharedElements<T extends BoardTextElement>(
+  viewed: T[],
+  source: T[],
+  reader?: BoardReader,
+): T[] {
   const originals = new Map(source.map((el) => [el.id, el]));
   return viewed.map((el) => {
     const prev = originals.get(el.id);
@@ -88,11 +92,21 @@ export function restoreSharedElements<T extends BoardTextElement>(viewed: T[], s
     if (typeof prev.text !== 'string') return el;
     const authorId = prev.customData?.authorId;
     if (!authorId) return el;
+    const language = prev.customData?.language || el.customData?.language;
+    if (reader && authorId === reader.id) {
+      const text = typeof el.text === 'string' ? el.text : prev.text;
+      return {
+        ...el,
+        text,
+        originalText: text,
+        customData: { ...prev.customData, ...el.customData, authorId, language: language || reader.language },
+      };
+    }
     return {
       ...el,
       text: prev.text,
       originalText: prev.originalText ?? prev.text,
-      customData: { ...prev.customData, ...el.customData, authorId, language: prev.customData?.language || el.customData?.language },
+      customData: { ...prev.customData, ...el.customData, authorId, language },
     };
   });
 }
