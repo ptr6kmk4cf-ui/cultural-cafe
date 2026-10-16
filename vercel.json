@@ -1,4 +1,5 @@
 {
   "framework": "nextjs",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "buildCommand": "rm -rf apps/web/public/board-app && npm run build -w @conversa/web"
 }
