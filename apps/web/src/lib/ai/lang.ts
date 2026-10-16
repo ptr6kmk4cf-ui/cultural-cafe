@@ -138,3 +138,13 @@ export function normalizeLang(code: string | null | undefined, fallback = 'en'):
   const c = LANGUAGE_ALIASES[base] ?? base;
   return LANGUAGE_CODES.includes(c) ? c : fallback;
 }
+
+/** A line already in their language is stored as theirs. Anything else is yours, then translated. */
+export function outgoingLanguages(text: string, myLang: string, otherLang: string) {
+  const spoken = text.replace(/\s+/g, ' ').trim();
+  if (otherLang && !draftNeedsTranslation(spoken, otherLang)) {
+    return { language: otherLang, translateTo: null as string | null };
+  }
+  const language = normalizeLang(detectLanguageHeuristic(spoken, myLang || 'en'), myLang || 'en');
+  return { language, translateTo: otherLang && language !== otherLang ? otherLang : null };
+}

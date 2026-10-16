@@ -469,7 +469,8 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
       if (!live(tableGen, token)) return;
       const err = e as ApiError;
       if (err.status === 409) rememberAuto(false);
-      setError(err.message || 'Claude Sonnet did not answer. Try again.');
+      if (handledId && (autoTries.current[handledId] ?? 0) >= 2) lastHandled.current = handledId;
+      setError(err.message || 'Could not answer that line. You can write this one.');
       setNudge((n) => n + 1);
     } finally {
       assistRef.current = false;
@@ -600,10 +601,9 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
       return;
     }
     const tries = autoTries.current[waitFor] ?? 0;
-    if (tries >= 3) {
+    if (tries >= 2) {
       lastHandled.current = waitFor;
       setReading(false);
-      setError('Could not answer that line. You can write this one.');
       return;
     }
     setReading(true);
@@ -620,7 +620,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
       autoTries.current[waitFor] = tries + 1;
       setReading(false);
       void assist(true, waitFor);
-    }, 15_000);
+    }, 2500);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auto, ended, waitFor, busy, nudge, guestHour]);

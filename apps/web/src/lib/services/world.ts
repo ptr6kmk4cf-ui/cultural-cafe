@@ -9,7 +9,7 @@ import { db } from '../db';
 import { discardFinishedWork, dropFinishedInvite } from '../finished-work';
 import { HttpError, notFound } from '../http';
 import { PLAN_LIMITS, assertWorldQuota } from '../plans';
-import { detectLanguageHeuristic, normalizeLang } from '../ai/lang';
+import { outgoingLanguages } from '../ai/lang';
 import { translateText } from '../ai/tasks';
 import { detectSensitiveRequest } from '../ai/safety';
 import { parseSignalBody, signalPhase } from '../world-signal';
@@ -871,14 +871,14 @@ export async function prepareWorldMessage(user: AuthUser, conversationId: string
   ]);
   const otherLang = otherRow?.myLanguage ?? 'en';
   const myLang = myRow?.myLanguage ?? 'en';
-  const detected = normalizeLang(detectLanguageHeuristic(text, myLang), myLang);
+  const { language, translateTo } = outgoingLanguages(text, myLang, otherLang);
   let translation: string | null = null;
   let translationLang: string | null = null;
-  if (detected !== otherLang) {
+  if (translateTo) {
     try {
-      const t = await translateText(user, text, otherLang);
+      const t = await translateText(user, text, translateTo);
       translation = t.translation?.trim() || null;
-      translationLang = translation ? otherLang : null;
+      translationLang = translation ? translateTo : null;
     } catch (err) {
       if (err instanceof HttpError) throw err;
       translation = null;
@@ -888,7 +888,7 @@ export async function prepareWorldMessage(user: AuthUser, conversationId: string
   return {
     id: randomBytes(12).toString('base64url'),
     text,
-    language: detected,
+    language,
     translation,
     translationLang,
     flagged: detectSensitiveRequest(text),

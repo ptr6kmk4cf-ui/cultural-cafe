@@ -2,12 +2,13 @@ import { z } from 'zod';
 import { requireUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { detectSensitiveRequest, detectStopRequest } from '@/lib/ai/safety';
-import { generateWorldReply, WORLD_AI_DISCLOSURE } from '@/lib/ai/tasks';
+import { generateWorldReply, translateText, WORLD_AI_DISCLOSURE } from '@/lib/ai/tasks';
 import { loadPersona } from '@/lib/ai/persona';
 import { json, parseBody, route } from '@/lib/http';
 import { assertWorldAutomation } from '@/lib/plans';
 import { rateLimit } from '@/lib/rate-limit';
 import { tablePromptFor } from '@/lib/services/cafe-topics';
+import { draftNeedsTranslation } from '@/lib/ai/lang';
 import { draftEchoes, lineWorthReading, replyAboutTheirLine, staysOnTable } from '@/lib/table-reply';
 import { requireParticipant, peerId, publicCard } from '@/lib/services/world';
 
@@ -66,10 +67,17 @@ export const POST = route<{ id: string }>(async (req, { id }) => {
   ) {
     text = replyAboutTheirLine({ latest: worth, topic, place });
   }
+  if (!blocked && (!text || draftNeedsTranslation(text, writeLang))) {
+    const fallback = replyAboutTheirLine({ latest: worth, topic, place });
+    const t = await translateText(user, fallback, writeLang).catch(() => null);
+    const next = t?.translation?.replace(/\s+/g, ' ').trim();
+    if (next && !draftNeedsTranslation(next, writeLang)) text = next;
+    else if (writeLang === lang.myLanguage) text = fallback;
+  }
   return json({
     text,
-    hold: blocked,
-    holdReason: blocked ? r.holdReason : null,
+    hold: blocked || !text,
+    holdReason: blocked ? r.holdReason : !text ? 'Could not write that line. You can write this one.' : null,
     disclosure: WORLD_AI_DISCLOSURE,
     mockAi: r.mock,
   });

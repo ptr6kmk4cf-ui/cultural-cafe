@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { hardFilter, matchRequestedPhoto, tagMatchesDealbreaker } from './tasks';
-import { detectLanguageHeuristic, draftNeedsTranslation, normalizeLang, translationFitsLanguage } from './lang';
+import { detectLanguageHeuristic, draftNeedsTranslation, normalizeLang, outgoingLanguages, translationFitsLanguage } from './lang';
 import { detectSensitiveRequest, detectStopRequest, filterUnsafeSuggestion, looksLikeInjection, sanitizeUntrusted } from './safety';
 
 const prefs = { ageMin: 25, ageMax: 38, location: '', maxDistanceKm: 100, relationshipGoals: [], interests: [], lifestyle: [], physicalPreferences: '', dealbreakers: ['smoker'] };
@@ -129,6 +129,16 @@ test('a later English draft in their language still needs translation', () => {
     ),
     'hr',
   );
+});
+
+test('a Croatian line you send to a Croatian guest is not translated again', () => {
+  const croatian = 'Kupujem previše voća i to zovem planom. Kava dolazi na drugo mjesto, pijem je stojeći.';
+  const sent = outgoingLanguages(croatian, 'en', 'hr');
+  assert.equal(sent.language, 'hr');
+  assert.equal(sent.translateTo, null);
+  const english = outgoingLanguages('If I miss the market, the rest of the day feels borrowed.', 'en', 'hr');
+  assert.equal(english.language, 'en');
+  assert.equal(english.translateTo, 'hr');
 });
 
 test('an English reader does not keep a Chinese translation', () => {

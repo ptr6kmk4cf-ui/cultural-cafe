@@ -8,7 +8,7 @@ import { HttpError, notFound } from '../http';
 import { draftNeedsTranslation } from '../ai/lang';
 import { translateText, writeCafeGuestLine } from '../ai/tasks';
 import { pool } from '../table-lanes';
-import { contentWords, guestLineFresh, guestLineRepeats, guestLineUsable, lastSpokenLine, tableSubject } from '../table-reply';
+import { contentWords, guestLineFresh, guestLineRepeats, guestLineUsable, lastSpokenLine, replyAboutTheirLine, tableSubject } from '../table-reply';
 import { CROWD, type CrowdPerson } from '../cafe-crowd';
 import { VOICES, type GuestVoice } from '../cafe-voices';
 import { tablePromptFor } from './cafe-topics';
@@ -937,12 +937,16 @@ async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[],
         text: await originalInGuestLanguage(account, fallback.text, guest.language),
       };
     }
-    const native = await uniqueGuestDraft({
+    let native = await uniqueGuestDraft({
       ...voice,
       humanLang: guest.language,
       history: visible,
       already: avoid,
     });
+    if (!native) {
+      const onTable = replyAboutTheirLine({ latest, topic, place: guest.city });
+      native = await originalInGuestLanguage(account, onTable, guest.language);
+    }
     let spoken = native || '';
     let reader = '';
     if (spoken) {
