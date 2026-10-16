@@ -9,17 +9,17 @@ import { Alert, Badge, Spinner, useToast } from '@/components/ui';
 import { ApiError, api } from '@/lib/client';
 import { cafeBoardUrl } from '@/lib/cafe-board-url';
 import { deviceKeepsLines, forgetDeviceLines, loadDeviceLines, saveDeviceLines, setDeviceKeepsLines } from '@/lib/cafe-device';
-import { composeAfterSwitch, composePairFromEdit, composePairFromSwitch, emptyComposePair, fillComposeOther, spokenLine, visibleLine } from '@/lib/speech';
+import { composeAfterSwitch, composePairFromEdit, composePairFromSwitch, emptyComposePair, fillComposeOther, spokenLine } from '@/lib/speech';
+import { AUTO_AFTER_BUBBLE_MS, GUEST_ANSWER_MS, SEND_DEBOUNCE_MS, remainingWait } from '@/lib/table-clock';
 import { bump, live } from '@/lib/table-lanes';
 import { isClosingLine } from '@/lib/table-reply';
 import { useWorldPeer } from '@/lib/world-peer';
 
-/** Pause before a café guest's bubble appears, so a scripted reply does not feel instant. Real peers skip this path. */
-const GUEST_THINK_MS = 1200;
-
-function waitGuestThink(token: number, gen: { current: number }) {
+function waitBudget(startedAt: number, budgetMs: number, token: number, gen: { current: number }) {
+  const left = remainingWait(startedAt, budgetMs);
+  if (left <= 0) return Promise.resolve(live(gen, token));
   return new Promise<boolean>((resolve) => {
-    window.setTimeout(() => resolve(live(gen, token)), GUEST_THINK_MS);
+    window.setTimeout(() => resolve(live(gen, token)), left);
   });
 }
 
@@ -200,10 +200,11 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     }
     greeted.current = id;
     const token = tableGen.current;
+    const started = Date.now();
     api(`/api/world/conversations/${id}/guest`, { body: { history: [] } })
       .then(async (r) => {
         if (!live(tableGen, token)) return;
-        if (!(await waitGuestThink(token, tableGen))) return;
+        if (!(await waitBudget(started, GUEST_ANSWER_MS, token, tableGen))) return;
         const message = r.message as Msg;
         setMsgs((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
       })
@@ -292,6 +293,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
   async function ship(raw: string, replaceId?: string) {
     const token = tableGen.current;
     const hour = guestHourRef.current;
+    const started = Date.now();
     const r = await api(`/api/world/conversations/${id}/prepare`, { body: { text: raw } });
     if (!live(tableGen, token)) return;
     const mine = { ...r.message, mine: true as const };
@@ -316,7 +318,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
       void api(`/api/world/conversations/${id}/guest`, { body: { history } })
         .then(async (reply) => {
           if (!live(tableGen, token)) return;
-          if (!(await waitGuestThink(token, tableGen))) return;
+          if (!(await waitBudget(started, GUEST_ANSWER_MS, token, tableGen))) return;
           setMsgs((m) => (m.some((x) => x.id === reply.message.id) ? m : [...m, reply.message]));
           if (reply.closed) rememberAuto(false);
         })
@@ -336,7 +338,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
 
   async function send() {
     const now = Date.now();
-    if (now - lastSendAt.current < 400) return;
+    if (now - lastSendAt.current < SEND_DEBOUNCE_MS) return;
     lastSendAt.current = now;
     const body = text.trim();
     if (busyRef.current) return;
@@ -405,10 +407,18 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
 
   function modelHistory() {
     const theirs = theirsRef.current;
-    return msgsRef.current.slice(-24).map((m) => ({
-      mine: m.mine,
-      text: (m.mine ? m.text : theirs ? m.text : m.translation || m.text).slice(0, 2000),
-    }));
+    return msgsRef.current
+      .slice(-24)
+      .map((m) => {
+        const line = spokenLine({
+          ...m,
+          myLanguage: myLangRef.current,
+          theirLanguage: theirLangRef.current,
+          inTheirLanguage: theirs,
+        });
+        return { mine: m.mine, text: (line.text || (m.mine ? m.text : '')).slice(0, 2000) };
+      })
+      .filter((m) => m.text);
   }
 
   function markDisclosed() {
@@ -552,7 +562,13 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     if (knownHear.current.has(last.id)) return;
     knownHear.current.add(last.id);
     heardRef.current = last.id;
-    const line = spokenLine({ ...last, myLanguage: myLang, inTheirLanguage: useTheirs });
+    const line = spokenLine({
+      ...last,
+      myLanguage: myLang,
+      theirLanguage: theirLangRef.current,
+      inTheirLanguage: useTheirs,
+    });
+    if (!line.text) return;
     if (line.text) speakLine(last.id, line.text, line.lang);
   }, [hear, ended, msgs, myLang, useTheirs]);
 
@@ -585,9 +601,24 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     const guests = msgs.filter((m) => !m.mine);
     const lastGuest = guests.at(-1);
     if (!lastGuest) return;
-    const body = visibleLine(lastGuest.translation || lastGuest.text);
+    const body = spokenLine({
+      ...lastGuest,
+      myLanguage: myLangRef.current,
+      theirLanguage: theirLangRef.current,
+      inTheirLanguage: theirsRef.current,
+    }).text;
     if (isClosingLine(body)) return;
-    const repeated = !!body && guests.slice(0, -1).some((m) => visibleLine(m.translation || m.text) === body);
+    const repeated =
+      !!body &&
+      guests.slice(0, -1).some(
+        (m) =>
+          spokenLine({
+            ...m,
+            myLanguage: myLangRef.current,
+            theirLanguage: theirLangRef.current,
+            inTheirLanguage: theirsRef.current,
+          }).text === body,
+      );
     if (!repeated) return;
     lastHandled.current = lastGuest.id;
     rememberAuto(false);
@@ -620,7 +651,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
       autoTries.current[waitFor] = tries + 1;
       setReading(false);
       void assist(true, waitFor);
-    }, 2500);
+    }, AUTO_AFTER_BUBBLE_MS);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auto, ended, waitFor, busy, nudge, guestHour]);
@@ -804,8 +835,14 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
         )}
         {msgs.map((m) => {
           const who = m.mine ? t('you') : (conv?.peer?.name ?? t('them'));
-          const heard = spokenLine({ ...m, myLanguage: myLang, inTheirLanguage: inTheirs });
+          const heard = spokenLine({
+            ...m,
+            myLanguage: myLang,
+            theirLanguage: theirLang,
+            inTheirLanguage: inTheirs,
+          });
           const main = heard.text;
+          if (!main) return null;
           return (
             <div key={m.id} className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${m.mine ? 'ml-auto bg-brand-500/20 text-white' : 'mr-auto bg-white/5 text-ink-100'}`}>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-300">{who}</p>

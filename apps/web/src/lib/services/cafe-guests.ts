@@ -5,7 +5,7 @@ import type { AuthUser } from '../auth';
 import { decrypt, encrypt } from '../crypto';
 import { db } from '../db';
 import { HttpError, notFound } from '../http';
-import { draftNeedsTranslation } from '../ai/lang';
+import { draftNeedsTranslation, pickLineInLanguage } from '../ai/lang';
 import { translateText, writeCafeGuestLine } from '../ai/tasks';
 import { pool } from '../table-lanes';
 import { contentWords, guestLineFresh, guestLineRepeats, guestLineUsable, lastSpokenLine, replyAboutTheirLine, tableSubject } from '../table-reply';
@@ -770,14 +770,25 @@ export function nativeGuestText(
 }
 
 /** The guest writes from their own originals, and from what they can read of you. */
-export function guestWriterHistory(turns: { mine: boolean; text: string; translation?: string | null }[]) {
+export function guestWriterHistory(
+  turns: { mine: boolean; text: string; translation?: string | null }[],
+  guestLang?: string,
+) {
   const seenGuest = new Set<string>();
   const out: { mine: boolean; text: string }[] = [];
   for (const turn of turns) {
-    const text = (turn.mine ? turn.translation || turn.text : turn.text).replace(/\s+/g, ' ').trim();
+    const original = (turn.text || '').replace(/\s+/g, ' ').trim();
+    const translated = (turn.translation || '').replace(/\s+/g, ' ').trim();
+    const text = guestLang
+      ? turn.mine
+        ? pickLineInLanguage([translated, original], guestLang)
+        : pickLineInLanguage([original, translated], guestLang)
+      : turn.mine
+        ? translated || original
+        : original;
     if (!text) continue;
     if (!turn.mine) {
-      const keys = [text, turn.translation || '']
+      const keys = [original, translated]
         .map((line) => line.replace(/\s+/g, ' ').trim().toLowerCase())
         .filter(Boolean);
       if (keys.some((key) => seenGuest.has(key))) {
@@ -892,26 +903,52 @@ async function originalInGuestLanguage(
   return spoken;
 }
 
+async function guestOriginal(
+  account: AuthUser | { id: string; email: string; name: string; role: AuthUser['role']; plan: AuthUser['plan'] },
+  draft: string,
+  backup: string,
+  guestLang: string,
+) {
+  const first = await originalInGuestLanguage(account, draft, guestLang);
+  if (first && !draftNeedsTranslation(first, guestLang)) return first;
+  const second = await originalInGuestLanguage(account, backup, guestLang);
+  if (second && !draftNeedsTranslation(second, guestLang)) return second;
+  return pickLineInLanguage([first, second, draft, backup], guestLang);
+}
+
+async function readerOfGuestLine(
+  account: AuthUser | { id: string; email: string; name: string; role: AuthUser['role']; plan: AuthUser['plan'] },
+  spoken: string,
+  humanLang: string,
+  guestLang: string,
+) {
+  if (!spoken || humanLang === guestLang) return null;
+  const t = await translateText(account, spoken, humanLang).catch(() => null);
+  const next = (t?.translation || '').replace(/\s+/g, ' ').trim();
+  if (!next || next.toLowerCase() === spoken.toLowerCase()) return null;
+  if (draftNeedsTranslation(next, humanLang)) return null;
+  return next;
+}
+
 /** A spoken line when the model can write one. The written catalog is the backup. */
 async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[], humanLang: string, topic: string) {
   const scripted = scriptedGuestTurn(guest.email, turns, humanLang, topic);
-  const latest = lastSpokenLine([...turns].reverse().find((turn) => turn.mine)?.text ?? '');
+  const latest = lastSpokenLine(
+    pickLineInLanguage(
+      [...turns].reverse().filter((turn) => turn.mine).flatMap((turn) => [turn.translation, turn.text]),
+      guest.language,
+    ) || [...turns].reverse().find((turn) => turn.mine)?.text || '',
+  );
   const stop = !!latest && (detectStopRequest(latest) || detectSensitiveRequest(latest));
   if (!scripted || stop) return scripted;
-  const visible = guestWriterHistory(turns);
-  const readerHistory = guestWriterHistory(turns.map((turn) => ({
-    mine: turn.mine,
-    text: turn.mine ? turn.text : (turn.translation || turn.text),
-    translation: turn.mine ? null : turn.translation,
-  })));
+  const visible = guestWriterHistory(turns, guest.language);
   const alreadySpoken = turns
     .filter((turn) => !turn.mine)
     .flatMap((turn) => [turn.text, turn.translation ?? ''])
     .map((line) => line.replace(/\s+/g, ' ').trim())
     .filter(Boolean);
   const already = visible.filter((turn) => !turn.mine).map((turn) => turn.text);
-  const alreadyRead = readerHistory.filter((turn) => !turn.mine).map((turn) => turn.text);
-  const avoid = [...new Set([...alreadySpoken, ...already, ...alreadyRead])];
+  const avoid = [...new Set([...alreadySpoken, ...already])];
   try {
     const account = await db.user.findUnique({
       where: { id: userId },
@@ -919,24 +956,7 @@ async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[],
     });
     if (!account) return scriptedIfFresh(scripted, avoid, guest, humanLang);
     const sources = [latest, topic].filter(Boolean);
-    const voice = {
-      user: account,
-      guest,
-      topic,
-      sources,
-    };
-    if (guest.language === humanLang) {
-      const native = await uniqueGuestDraft({ ...voice, humanLang, history: visible, already: avoid });
-      if (native) {
-        const text = await originalInGuestLanguage(account, native, guest.language);
-        return { text, language: humanLang, translation: null, translationLang: null, closed: false };
-      }
-      const fallback = scriptedIfFresh(scripted, avoid, guest, humanLang);
-      return {
-        ...fallback,
-        text: await originalInGuestLanguage(account, fallback.text, guest.language),
-      };
-    }
+    const voice = { user: account, guest, topic, sources };
     let native = await uniqueGuestDraft({
       ...voice,
       humanLang: guest.language,
@@ -944,49 +964,36 @@ async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[],
       already: avoid,
     });
     if (!native) {
-      const onTable = replyAboutTheirLine({ latest, topic, place: guest.city });
-      native = await originalInGuestLanguage(account, onTable, guest.language);
+      native = replyAboutTheirLine({ latest, topic, place: guest.city });
     }
-    let spoken = native || '';
-    let reader = '';
-    if (spoken) {
-      try {
-        const t = await translateText(account, spoken, humanLang);
-        reader = (t.translation || '').trim();
-      } catch {
-        reader = '';
-      }
+    let text = await guestOriginal(account, native, scripted.text, guest.language);
+    if (!text || guestLineRepeats(text, already)) {
+      const fallback = scriptedIfFresh(scripted, avoid, guest, humanLang);
+      text = await guestOriginal(account, fallback.text, scripted.text, guest.language);
     }
-    if (!reader || reader.toLowerCase() === spoken.replace(/\s+/g, ' ').trim().toLowerCase() || !guestLineFresh(reader, humanLang, avoid)) {
-      const draft = await uniqueGuestDraft({ ...voice, humanLang, history: readerHistory, already: avoid });
-      if (draft) reader = draft;
-    }
-    if (!reader || !guestLineFresh(reader, humanLang, avoid)) {
+    if (!text) {
       const fallback = scriptedIfFresh(scripted, avoid, guest, humanLang);
       return {
         ...fallback,
         text: await originalInGuestLanguage(account, fallback.text, guest.language),
       };
     }
-    let text = nativeGuestText(reader, spoken, scripted.text, guest.language);
-    if (!spoken || guestLineRepeats(text, already) || draftNeedsTranslation(text, guest.language)) {
-      const t = await translateText(account, reader, guest.language).catch(() => null);
-      const next = t?.translation?.replace(/\s+/g, ' ').trim();
-      if (next && !draftNeedsTranslation(next, guest.language) && !guestLineRepeats(next, already)) text = next;
-    }
-    text = await originalInGuestLanguage(account, text, guest.language);
-    if (guestLineRepeats(text, already) || guestLineRepeats(reader, avoid)) {
-      const fallback = scriptedIfFresh(scripted, avoid, guest, humanLang);
-      return {
-        ...fallback,
-        text: await originalInGuestLanguage(account, fallback.text, guest.language),
-      };
+    let reader = await readerOfGuestLine(account, text, humanLang, guest.language);
+    if (!reader && humanLang !== guest.language) {
+      const inReader = guestWriterHistory(turns, humanLang);
+      const draft = await uniqueGuestDraft({
+        ...voice,
+        humanLang,
+        history: inReader,
+        already: avoid,
+      });
+      if (draft && !draftNeedsTranslation(draft, humanLang) && !guestLineRepeats(draft, avoid)) reader = draft;
     }
     return {
       text,
       language: guest.language,
       translation: reader,
-      translationLang: humanLang,
+      translationLang: reader ? humanLang : null,
       closed: false,
     };
   } catch (err) {

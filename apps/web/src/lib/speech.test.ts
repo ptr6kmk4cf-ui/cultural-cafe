@@ -78,6 +78,36 @@ test('when you choose their language, you hear and read the original', () => {
   assert.equal(heard.lang, 'es');
 });
 
+test('their language does not show the English copy', () => {
+  const heard = spokenLine({
+    mine: false,
+    text: 'If I miss the market, the rest of the day feels borrowed.',
+    language: 'hr',
+    translation: 'If I miss the market, the rest of the day feels borrowed.',
+    translationLang: 'en',
+    myLanguage: 'en',
+    theirLanguage: 'hr',
+    inTheirLanguage: true,
+  });
+  assert.equal(heard.text, '');
+  assert.equal(heard.lang, 'hr');
+});
+
+test('my language does not show their original', () => {
+  const heard = spokenLine({
+    mine: false,
+    text: 'Previše voća kao plan mi je super taktika za slobodno popodne. Imaš li ti neko mjesto gdje to voće pojedeš?',
+    language: 'hr',
+    translation: null,
+    translationLang: null,
+    myLanguage: 'en',
+    theirLanguage: 'hr',
+    inTheirLanguage: false,
+  });
+  assert.equal(heard.text, '');
+  assert.equal(heard.lang, 'en');
+});
+
 test('their line is heard in your language, not in theirs', () => {
   const heard = spokenLine({
     mine: false,

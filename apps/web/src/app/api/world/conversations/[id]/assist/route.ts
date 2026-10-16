@@ -72,8 +72,10 @@ export const POST = route<{ id: string }>(async (req, { id }) => {
     const t = await translateText(user, fallback, writeLang).catch(() => null);
     const next = t?.translation?.replace(/\s+/g, ' ').trim();
     if (next && !draftNeedsTranslation(next, writeLang)) text = next;
-    else if (writeLang === lang.myLanguage) text = fallback;
+    else if (writeLang === lang.myLanguage && !draftNeedsTranslation(fallback, writeLang)) text = fallback;
+    else text = '';
   }
+  if (!blocked && text && draftNeedsTranslation(text, writeLang)) text = '';
   return json({
     text,
     hold: blocked || !text,

@@ -12,6 +12,7 @@ import {
 import { Excalidraw } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
 import { api, ApiError } from './api';
+import { tableTalkMap } from './tableTalkMap';
 
 type SceneEl = BoardTextElement & Record<string, unknown>;
 type BoardState = {
@@ -23,6 +24,7 @@ type BoardState = {
 };
 
 const table = new URLSearchParams(window.location.search).get('table') || '';
+const talkMap = new URLSearchParams(window.location.search).get('map') === 'talk';
 const cafe = import.meta.env.DEV ? 'http://localhost:3000' : '';
 
 const LANG: Record<string, string> = {
@@ -82,7 +84,9 @@ export function BoardApp() {
     if (!who || !apiNow) return;
     keepCaches(elements);
     applying.current = true;
-    apiNow.updateScene({ elements: viewedElements(elements, who, translations.current) as never });
+    apiNow.updateScene({
+      elements: (talkMap ? elements : viewedElements(elements, who, translations.current)) as never,
+    });
     applying.current = false;
   }, []);
 
@@ -143,6 +147,25 @@ export function BoardApp() {
 
   useEffect(() => {
     live.current = true;
+    if (talkMap) {
+      const bootMap = () => {
+        if (!live.current) return;
+        const elements = tableTalkMap() as SceneEl[];
+        source.current = elements;
+        reader.current = { id: 'you', language: 'en' };
+        setBoot({
+          ended: false,
+          version: 1,
+          elements,
+          me: { id: 'you', language: 'en', name: 'You' },
+          peerLanguage: 'en',
+        });
+      };
+      void document.fonts.ready.then(bootMap).catch(bootMap);
+      return () => {
+        live.current = false;
+      };
+    }
     if (!table) {
       setError('Open the board from a table in the café.');
       return;
@@ -172,7 +195,7 @@ export function BoardApp() {
   }, []);
 
   useEffect(() => {
-    if (!boot || boot.ended) return;
+    if (talkMap || !boot || boot.ended) return;
     const tick = () => {
       api<BoardState>(`/api/world/conversations/${table}/board`)
         .then((data) => {
@@ -210,15 +233,16 @@ export function BoardApp() {
     <>
       <header className="cafe-board-bar">
         <div>
-          <h1>Café board</h1>
+          <h1>{talkMap ? 'Table talk map' : 'Café board'}</h1>
           <p>
-            You write in your language.{' '}
-            {boot.me.language !== boot.peerLanguage
-              ? 'They see a translation. You see theirs. Your own words stay as you wrote them.'
-              : 'You both read the same words.'}
+            {talkMap
+              ? 'A drawing of the path from your Send to their answer. Local only — not a live table.'
+              : boot.me.language !== boot.peerLanguage
+                ? 'You write in your language. They see a translation. You see theirs. Your own words stay as you wrote them.'
+                : 'You both read the same words.'}
           </p>
         </div>
-        <a href={`${cafe}/app/world/${table}`}>Back to the table</a>
+        <a href={talkMap ? `${cafe}/app` : `${cafe}/app/world/${table}`}>{talkMap ? 'Back to the Café' : 'Back to the table'}</a>
       </header>
       <div className="cafe-board-stage">
         <Excalidraw
@@ -226,6 +250,14 @@ export function BoardApp() {
             apiRef.current = next as unknown as { updateScene: (scene: { elements: readonly unknown[] }) => void };
             paint(source.current);
             translateSoon(source.current);
+            if (talkMap) {
+              window.setTimeout(() => {
+                (next as unknown as { scrollToContent?: (els: unknown, opts?: { fitToContent?: boolean }) => void }).scrollToContent?.(
+                  source.current,
+                  { fitToContent: true },
+                );
+              }, 80);
+            }
           }}
           theme="dark"
           langCode={LANG[boot.me.language] || 'en'}
@@ -233,12 +265,12 @@ export function BoardApp() {
           viewModeEnabled={boot.ended}
           UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false } }}
           initialData={{
-            elements: viewedElements(boot.elements, boot.me, {}) as never[],
+            elements: (talkMap ? boot.elements : viewedElements(boot.elements, boot.me, {})) as never[],
             appState: { theme: 'dark' },
           }}
           onChange={(elements) => {
             const who = reader.current;
-            if (applying.current || !who || boot.ended) return;
+            if (talkMap || applying.current || !who || boot.ended) return;
             const stamped = stampNewText(elements as unknown as SceneEl[], who);
             const shared = restoreSharedElements(stamped, source.current, who);
             source.current = shared;

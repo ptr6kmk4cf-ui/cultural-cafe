@@ -166,6 +166,20 @@ test('the guest writes from their own words and the translation they can read', 
   assert.equal(thread[1].text, 'Jumapili natembea kando ya mto.');
 });
 
+test('the guest writer only keeps the guest language', () => {
+  const thread = guestWriterHistory(
+    [
+      { mine: false, text: 'If I miss the market, the rest of the day feels borrowed.', translation: 'Ako propustim tržnicu, ostatak dana mi je posuđen.' },
+      { mine: true, text: 'I buy too much fruit.', translation: 'Previše voća kao plan mi je super taktika za slobodno popodne.' },
+      { mine: false, text: 'The bakery still smells like butter.', translation: null },
+    ],
+    'hr',
+  );
+  assert.equal(thread.length, 2);
+  assert.match(thread[0].text, /tržnicu|posuđen/);
+  assert.match(thread[1].text, /voća/);
+});
+
 test('the guest is not fed the same line twice as native and translation', () => {
   const thread = guestWriterHistory([
     { mine: false, text: 'Habari jumapili.', translation: 'Hello on Sunday.' },

@@ -106,6 +106,16 @@ export function draftNeedsTranslation(text: string, wanted: string): boolean {
   return detectLanguageHeuristic(clean, wanted) !== wanted;
 }
 
+/** First line that is already in `wanted`. The other language is skipped. */
+export function pickLineInLanguage(lines: Array<string | null | undefined>, wanted: string) {
+  if (!wanted) return '';
+  for (const line of lines) {
+    const clean = (line || '').replace(/\s+/g, ' ').trim();
+    if (clean && !draftNeedsTranslation(clean, wanted)) return clean;
+  }
+  return '';
+}
+
 export function detectLanguageHeuristic(text: string, fallback = 'en'): string {
   for (const [re, lang] of SCRIPTS) {
     if (!re.test(text)) continue;

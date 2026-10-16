@@ -1,4 +1,5 @@
 import { LANGUAGE_ALIASES, LANGUAGE_CODES } from '@conversa/shared';
+import { pickLineInLanguage } from './ai/lang';
 
 /** Region tags speechSynthesis understands. */
 const SPEECH_LOCALES: Record<string, string> = {
@@ -156,15 +157,22 @@ export function spokenLine(m: {
   translation?: string | null;
   translationLang?: string | null;
   myLanguage: string;
+  theirLanguage?: string | null;
   /** Read and hear their original, not the translation into your language. */
   inTheirLanguage?: boolean;
 }) {
   const original = visibleLine(m.text);
-  if (m.mine) return { text: original, lang: m.language || m.myLanguage };
-  if (m.inTheirLanguage) return { text: original, lang: m.language || m.myLanguage };
   const translated = visibleLine(m.translation || '');
-  if (translated) return { text: translated, lang: m.translationLang || m.myLanguage };
-  return { text: original, lang: m.language || m.myLanguage };
+  if (m.mine) return { text: original, lang: m.language || m.myLanguage };
+  const theirLang = m.theirLanguage || m.language || '';
+  if (m.inTheirLanguage) {
+    const inTheirs = theirLang ? pickLineInLanguage([original], theirLang) : '';
+    const inMine = pickLineInLanguage([original], m.myLanguage);
+    const text = inTheirs || (!inMine ? original : '');
+    return { text, lang: theirLang || m.language || m.myLanguage };
+  }
+  const mine = pickLineInLanguage([translated, original], m.myLanguage);
+  return { text: mine, lang: m.myLanguage };
 }
 
 /** Stitches live dictation onto the line that was already in the box. */

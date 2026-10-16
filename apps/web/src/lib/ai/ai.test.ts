@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { hardFilter, matchRequestedPhoto, tagMatchesDealbreaker } from './tasks';
-import { detectLanguageHeuristic, draftNeedsTranslation, normalizeLang, outgoingLanguages, translationFitsLanguage } from './lang';
+import { detectLanguageHeuristic, draftNeedsTranslation, normalizeLang, outgoingLanguages, pickLineInLanguage, translationFitsLanguage } from './lang';
 import { detectSensitiveRequest, detectStopRequest, filterUnsafeSuggestion, looksLikeInjection, sanitizeUntrusted } from './safety';
 
 const prefs = { ageMin: 25, ageMax: 38, location: '', maxDistanceKm: 100, relationshipGoals: [], interests: [], lifestyle: [], physicalPreferences: '', dealbreakers: ['smoker'] };
@@ -129,6 +129,15 @@ test('a later English draft in their language still needs translation', () => {
     ),
     'hr',
   );
+});
+
+test('the chosen language keeps the other language out', () => {
+  const croatian = 'Previše voća kao plan mi je super taktika za slobodno popodne. Imaš li ti neko mjesto gdje to voće pojedeš?';
+  const english = 'If I miss the market, the rest of the day feels borrowed.';
+  assert.equal(pickLineInLanguage([english, croatian], 'hr'), croatian);
+  assert.equal(pickLineInLanguage([croatian, english], 'en'), english);
+  assert.equal(pickLineInLanguage([english], 'hr'), '');
+  assert.equal(pickLineInLanguage([croatian], 'en'), '');
 });
 
 test('a Croatian line you send to a Croatian guest is not translated again', () => {
