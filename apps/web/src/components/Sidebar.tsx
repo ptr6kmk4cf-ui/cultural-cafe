@@ -19,7 +19,7 @@ const NAV: { href: string; key: UiKey; icon: string }[] = [
 ];
 
 export function Sidebar({ user }: { user: { name: string; email: string; plan: string; role: string } }) {
-  const path = usePathname();
+  const path = usePathname() ?? '';
   const { t } = useUi();
   const [open, setOpen] = useState(false);
   const active = (href: string) => (href === '/app' || href === '/app/world' ? path === href : path.startsWith(href));

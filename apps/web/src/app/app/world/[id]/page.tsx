@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { use, useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { isRtl, languageName } from '@conversa/shared';
 import { DictationButton, HearButton, speakLine, stopSpeaking, unlockSpeech, type DictationHandle } from '@/components/CafeSpeech';
 import { useUi } from '@/components/UiLocale';
@@ -26,8 +26,8 @@ type Conv = {
   prompt: { id: string; title: string; question: string } | null;
 };
 
-export default function WorldChat() {
-  const { id } = useParams<{ id: string }>();
+export default function WorldChat({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const { t, lang } = useUi();
   const router = useRouter();
   const [conv, setConv] = useState<Conv | null>(null);
