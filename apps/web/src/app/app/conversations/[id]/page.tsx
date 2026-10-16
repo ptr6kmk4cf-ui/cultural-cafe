@@ -246,7 +246,7 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
             <button className={tab === 'memory' ? 'btn-secondary' : 'btn-ghost'} onClick={() => setTab('memory')}>Memory ({memories.length})</button>
             <button className={tab === 'settings' ? 'btn-secondary' : 'btn-ghost'} onClick={() => setTab('settings')}>Settings</button>
           </div>
-          {tab === 'memory' ? <MemoryPanel contactId={id} memories={memories} reload={load} /> : <SettingsPanel contact={contact} onSave={patch} />}
+          {tab === 'memory' ? <MemoryPanel contactId={id} memories={memories} reload={async () => { await load(); }} /> : <SettingsPanel contact={contact} onSave={patch} />}
         </div>
       </div>
       {toast}
