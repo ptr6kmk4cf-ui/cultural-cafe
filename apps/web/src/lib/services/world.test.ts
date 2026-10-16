@@ -4,6 +4,7 @@ import { cafePromptFor, cafePromptFromPool } from '@conversa/shared';
 import { icePayload, parseSignalBody, signalPhase } from '../world-signal';
 import { CROWD } from '../cafe-crowd';
 import { VOICES } from '../cafe-voices';
+import { guestLineRepeats } from '../table-reply';
 import { cafeGuestEmails, guestFollowUp, guestSlots, guestWriterHistory, hardcodedTableReply, isLooseCafeEmail, nativeGuestText, nextHardcodedTableLine, scriptedGuestTurn } from './cafe-guests';
 import { INVITE_CODE_LENGTH, firstName, friendInviteMessage, friendJoinPath, isInviteCode, newInviteCode, normalizeInviteCode } from './world';
 
@@ -163,6 +164,52 @@ test('the guest writes from their own words and the translation they can read', 
   ]);
   assert.equal(thread[0].text, 'Habari jumapili.');
   assert.equal(thread[1].text, 'Jumapili natembea kando ya mto.');
+});
+
+test('the guest is not fed the same line twice as native and translation', () => {
+  const thread = guestWriterHistory([
+    { mine: false, text: 'Habari jumapili.', translation: 'Hello on Sunday.' },
+    { mine: false, text: 'Hello on Sunday.', translation: 'Hello on Sunday.' },
+    { mine: true, text: 'On Sunday I walk by the river.', translation: 'Jumapili natembea kando ya mto.' },
+  ]);
+  assert.equal(thread.length, 2);
+  assert.equal(thread[0].text, 'Habari jumapili.');
+  assert.equal(thread[1].text, 'Jumapili natembea kando ya mto.');
+});
+
+test('a café guest does not parrot the last stay-on-topic line', () => {
+  const topic = 'What is “Garden” like where you live?';
+  const loop = 'In Kathmandu, Garden is still the part I can describe. How is it where you live?';
+  const lines = VOICES.pemba.lines;
+  const history = [
+    { mine: false, text: lines[0], translation: lines[0] },
+    { mine: true, text: 'Hello from my garden.' },
+    { mine: false, text: lines[1], translation: lines[1] },
+    { mine: true, text: 'We sit outside with tea.' },
+    { mine: false, text: lines[2], translation: lines[2] },
+    { mine: true, text: 'The tea is strong in the morning.' },
+    { mine: false, text: lines[3], translation: lines[3] },
+    { mine: true, text: 'I leave the cup when it is empty.' },
+    { mine: false, text: loop, translation: loop },
+    { mine: true, text: 'The tea is strong in the morning.' },
+    { mine: false, text: `${loop} Tell me one more thing about it.`, translation: `${loop} Tell me one more thing about it.` },
+    { mine: true, text: 'We sit in the garden after breakfast.' },
+  ];
+  const next = scriptedGuestTurn('guest.pemba@culturalcafe.invalid', history, 'en', topic);
+  const recent = [loop, `${loop} Tell me one more thing about it.`];
+  assert.ok(next?.translation || next?.text);
+  assert.notEqual(next?.text, loop);
+  assert.notEqual(next?.translation, loop);
+  assert.equal((next?.translation || '').includes(loop), false);
+  assert.equal(guestLineRepeats(next?.translation || next?.text || '', recent), false);
+  const again = scriptedGuestTurn(
+    'guest.pemba@culturalcafe.invalid',
+    [...history, { mine: false, text: next?.text ?? '', translation: next?.translation }, { mine: true, text: 'And after breakfast?' }],
+    'en',
+    topic,
+  );
+  assert.notEqual(again?.translation || again?.text, next?.translation || next?.text);
+  assert.equal(guestLineRepeats(again?.translation || again?.text || '', [next?.translation || next?.text || '', ...recent]), false);
 });
 
 test('A guest hello is the written English line, not a translation', () => {

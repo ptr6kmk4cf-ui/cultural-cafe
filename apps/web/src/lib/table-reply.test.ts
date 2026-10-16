@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { correctSpokenLine, draftEchoes, guestLineUsable, isClosingLine, lastSpokenLine, lineWorthReading, replyAboutTheirLine, replyReads, staysOnTable } from './table-reply';
+import { correctSpokenLine, draftEchoes, guestLineRepeats, guestLineUsable, isClosingLine, lastSpokenLine, lineWorthReading, replyAboutTheirLine, replyReads, staysOnTable } from './table-reply';
 
 test('a stock thank-you does not count as reading the table', () => {
   const stock = 'Thank you for telling me that. What is a normal day like in Lyon, France?';
@@ -58,6 +58,20 @@ test('a stiff or wrong-language guest line is not shown', () => {
   assert.equal(guestLineUsable(already[0], 'en', already, sources), false);
   assert.equal(
     guestLineUsable('We say a word first, then a small wave. The sea is loud enough that nobody needs a big hello.', 'en', already, sources),
+    true,
+  );
+});
+
+test('a parrot of the last guest lines is rejected', () => {
+  const loop = 'In Kathmandu, Garden is still the part I can describe. How is it where you live?';
+  const already = [loop, `${loop} Tell me one more thing about it.`];
+  const sources = ['The tea is strong in the morning.', 'What is “Garden” like where you live?'];
+  assert.equal(guestLineRepeats(loop, already), true);
+  assert.equal(guestLineRepeats(`${loop} Tell me one more thing about it.`, [loop]), true);
+  assert.equal(guestLineUsable(loop, 'en', already, sources), false);
+  assert.equal(guestLineUsable('Garden is still the part I can describe from Kathmandu. How is it where you live?', 'en', already, sources), false);
+  assert.equal(
+    guestLineUsable('Morning tea here is strong too. I drink it in the garden before the heat starts.', 'en', already, sources),
     true,
   );
 });

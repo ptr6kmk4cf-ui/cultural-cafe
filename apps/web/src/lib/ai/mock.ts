@@ -103,14 +103,24 @@ export async function mockComplete(req: AiRequest): Promise<AiResult> {
     }
     case 'cafe_guest': {
       const latest = between(text, 'latest');
-      const topic = (req.system.match(/TABLE TOPIC: (.+)/) || [])[1]?.trim() ?? '';
+      const topic = (req.system.match(/The table started on: (.+)/) || req.system.match(/TABLE TOPIC: (.+)/) || [])[1]?.trim() ?? '';
       const stop = latest ? detectStopRequest(latest) : false;
       const sensitive = latest ? /western union|money|iban/i.test(latest) : false;
-      const lang = (req.system.match(/Write ONLY in [^(]+\((\w\w)\)/) || [])[1] || 'en';
+      const lang = (req.system.match(/Write only in [^(]+\((\w\w)\)/i) || [])[1] || 'en';
       const p = PHRASES[lang] ?? PHRASES.en;
-      const detail = latest.replace(/\s+/g, ' ').trim().slice(0, 80);
-      const line = stop || sensitive ? p.bye : detail ? `${p.reply} You said “${detail}”. ${topic}`.trim() : p.hi;
-      out = { text: line, english: line };
+      const said = [...text.matchAll(/<untrusted_said>\n?([\s\S]*?)\n?<\/untrusted_said>/g)].map((m) => m[1].trim().toLowerCase());
+      const place = (req.system.match(/texting from ([^,]+),/) || [])[1] ?? '';
+      let line = stop || sensitive
+        ? p.bye
+        : latest
+          ? lang === 'en'
+            ? replyAboutTheirLine({ latest, topic, place })
+            : `${p.reply} ${p.follow}`
+          : `${p.hi} ${p.follow}`;
+      if (said.includes(line.replace(/\s+/g, ' ').trim().toLowerCase())) {
+        line = lang === 'en' ? `${p.follow} ${latest.slice(0, 40)}`.trim() : `${p.follow} ${p.reply}`;
+      }
+      out = { text: line };
       break;
     }
     case 'world_reply': {

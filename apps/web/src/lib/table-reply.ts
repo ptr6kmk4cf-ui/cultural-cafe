@@ -26,15 +26,48 @@ export function contentWords(text: string): string[] {
 
 const STIFF = /\b(i am glad to hear|glad to hear that|you mentioned|thank you for telling|you said|as an ai|language model|the part i am answering)\b/i;
 
-/** A guest line can be shown when it is in the reader's language, answers the thread, and does not sound like a form. */
-export function guestLineUsable(text: string, humanLang: string, already: string[], sources: string[]): boolean {
+export function normGuestLine(text: string) {
+  return text.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/** True when the next guest line is the last one again, a suffix of it, or the same words reshuffled. */
+export function guestLineRepeats(text: string, already: string[]): boolean {
+  const clean = normGuestLine(text);
+  if (!clean) return true;
+  const recent = already.slice(-3).map(normGuestLine).filter(Boolean);
+  for (const prior of recent) {
+    if (prior === clean) return true;
+    const shorter = prior.length <= clean.length ? prior : clean;
+    const longer = prior.length <= clean.length ? clean : prior;
+    if (shorter.length >= 24 && longer.includes(shorter)) return true;
+    const priorWords = contentWords(prior);
+    const nextWords = contentWords(clean);
+    const basis = Math.min(priorWords.length, nextWords.length);
+    if (basis < 3) continue;
+    const priorSet = new Set(priorWords);
+    const shared = nextWords.filter((word) => priorSet.has(word)).length;
+    if (shared / basis >= 0.7) return true;
+  }
+  return false;
+}
+
+/** A guest line is new enough to send: right language, not a form, not a copy of the last turns. */
+export function guestLineFresh(text: string, humanLang: string, already: string[]): boolean {
   const clean = text.replace(/\s+/g, ' ').trim();
   if (clean.length < 20 || clean.length > 360) return false;
   if (STIFF.test(clean)) return false;
   if ((clean.match(/\?/g) ?? []).length > 1) return false;
   if (!translationFitsLanguage(clean, humanLang)) return false;
-  const norm = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
-  if (already.some((previous) => norm(previous) === norm(clean))) return false;
+  if (already.some((previous) => normGuestLine(previous) === normGuestLine(clean))) return false;
+  if (guestLineRepeats(clean, already)) return false;
+  return true;
+}
+
+/** A guest line can be shown when it is in the reader's language, answers the thread, and does not sound like a form. */
+export function guestLineUsable(text: string, humanLang: string, already: string[], sources: string[]): boolean {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (!guestLineFresh(clean, humanLang, already)) return false;
+  if (draftEchoes(clean, sources[0] ?? '', sources[1] ?? '')) return false;
   return staysOnTable(clean, sources[0] ?? '', sources[1] ?? '');
 }
 

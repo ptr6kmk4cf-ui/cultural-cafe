@@ -462,6 +462,20 @@ const GuestLineSchema = z.object({
   text: z.preprocess((v) => (typeof v === 'string' ? v.trim().slice(0, 400) : ''), z.string()),
 });
 
+function uniqueSaid(lines: string[]) {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const line of lines) {
+    const clean = line.replace(/\s+/g, ' ').trim();
+    if (!clean) continue;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(clean);
+  }
+  return out;
+}
+
 /** One spoken line from a café guest, written in `humanLang` on every turn. */
 export async function writeCafeGuestLine(opts: {
   user: AuthUser;
@@ -474,20 +488,24 @@ export async function writeCafeGuestLine(opts: {
   humanLang: string;
   topic: string;
   history: { mine: boolean; text: string }[];
+  avoid?: string[];
 }) {
   const latest = lastSpokenLine([...opts.history].reverse().find((turn) => turn.mine)?.text ?? '');
-  const said = opts.history.filter((turn) => !turn.mine).map((turn) => turn.text).slice(-6);
+  const said = uniqueSaid([
+    ...opts.history.filter((turn) => !turn.mine).map((turn) => turn.text),
+    ...(opts.avoid ?? []),
+  ]).slice(-8);
   const system = `You are ${opts.name}, texting from ${opts.city}, ${opts.country}. You are one person at one café table, not a guide.
 
 HOW YOU TEXT
 - Write only in ${langLine(opts.humanLang)}. Any other language is thrown away. The table topic and this prompt may be in English; every turn, including later replies, is still ${langLine(opts.humanLang)}.
 - Sound like a text: contractions, one or two sentences, one question at most.
-- TABLE TOPIC (do not leave it): ${opts.topic || 'everyday life where each of you lives'}
-- Answer their last text in the first sentence. Keep one thing they named. Stay on the table topic.
-- If they wander, one short nod, then a question that returns to the topic. Do not start a new subject.
+- The table started on: ${opts.topic || 'everyday life where each of you lives'}
+- After the greeting, do not greet again, and do not paste that topic or question. Answer what they just said. Keep one thing they named. Stay with the subject without restating it.
+- If they wander, one short nod, then a new question in the same subject. Do not start a new subject.
 - How you sound: ${opts.personality || 'Warm, curious, and specific about your own street.'}
 - You may use this life only when it answers them or the topic: ${opts.bio} ${opts.interests.join(', ') || 'ordinary days'}.
-- Do not repeat a line you already sent.
+- Do not repeat a line you already sent, or a close paraphrase of one. Do not repeat a greeting.
 - Never write "I am glad to hear that", "You mentioned", "Thank you for telling me", "You said", or "Hello from ${opts.city}".
 - Do not invent a job, a family, money, a phone number, or a plan to meet.
 - Output JSON only: {"text":"…"}`;
@@ -503,12 +521,12 @@ HOW YOU TEXT
       messages: [{
         role: 'user',
         content: latest
-          ? `Stay on this table topic:\n${untrusted('topic', opts.topic || 'everyday life', 300)}\n\nTheir last text:\n${untrusted('latest', latest, 500)}\n\nAlready sent by you:\n${said.map((line) => untrusted('said', line, 300)).join('\n') || '(nothing yet)'}\n\nThread:\n${thread}`
+          ? `The table started on this subject (do not paste it):\n${untrusted('topic', opts.topic || 'everyday life', 300)}\n\nTheir last text:\n${untrusted('latest', latest, 500)}\n\nAlready sent by you (do not repeat or closely paraphrase):\n${said.map((line) => untrusted('said', line, 300)).join('\n') || '(nothing yet)'}\n\nThread:\n${thread}`
           : `Nobody has written yet. Greet them on this table topic, with one ordinary detail from your street and one easy question:\n${untrusted('topic', opts.topic || 'everyday life', 300)}`,
       }],
       json: true,
-      temperature: 0.55,
-      maxTokens: 220,
+      temperature: 0.7,
+      maxTokens: 280,
     },
     GuestLineSchema,
   );

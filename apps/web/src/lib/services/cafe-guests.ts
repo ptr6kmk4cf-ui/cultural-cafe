@@ -7,7 +7,7 @@ import { HttpError, notFound } from '../http';
 import { draftNeedsTranslation } from '../ai/lang';
 import { translateText, writeCafeGuestLine } from '../ai/tasks';
 import { pool } from '../table-lanes';
-import { contentWords, guestLineUsable, lastSpokenLine, tableSubject } from '../table-reply';
+import { contentWords, guestLineFresh, guestLineRepeats, guestLineUsable, lastSpokenLine, tableSubject } from '../table-reply';
 import { CROWD, type CrowdPerson } from '../cafe-crowd';
 import { VOICES, type GuestVoice } from '../cafe-voices';
 import { tablePromptFor } from './cafe-topics';
@@ -388,9 +388,13 @@ function normLine(text: string) {
 function alreadySaid(said: string[], line: string) {
   const next = normLine(line);
   if (!next) return true;
+  if (guestLineRepeats(next, said)) return true;
   return said.some((previous) => {
     const prior = normLine(previous);
-    return prior === next || prior.includes(next);
+    if (prior === next) return true;
+    const shorter = prior.length <= next.length ? prior : next;
+    const longer = prior.length <= next.length ? next : prior;
+    return shorter.length >= 24 && longer.includes(shorter);
   });
 }
 
@@ -404,11 +408,24 @@ function lineTouches(item: { say: string; english: string }, words: string[]) {
 }
 
 function stayOnSubject(guest: Guest, topic: string, said: string[]) {
+  const leftover = unusedFollow(guest, said)[0];
+  if (leftover) return leftover;
   const subject = tableSubject(topic);
-  const english = subject
-    ? `In ${guest.city}, ${subject} is still the part I can describe. How is it where you live?`
-    : `I am still on that from ${guest.city}. What is it like on your street?`;
-  return { say: english, english: alreadySaid(said, english) ? `${english} Tell me one more thing about it.` : english };
+  const city = guest.city;
+  const variants = subject
+    ? [
+        `In ${city} the ordinary ${subject} is not a show. What is the quiet version where you are?`,
+        `${subject} here is a weekday thing, not a visit. How does yours look on an ordinary morning?`,
+        `I can keep talking about ${subject} from ${city} if you give me one new detail from your street.`,
+      ]
+    : [
+        `I am still with that from ${city}. Give me one new detail from your side.`,
+        `Keep going. I will match it with something small from ${city}.`,
+      ];
+  const next = variants.find((line) => !alreadySaid(said, line));
+  if (next) return { say: next, english: next };
+  const fallback = `Your turn — one new thing from your side, not the last one.`;
+  return { say: fallback, english: fallback };
 }
 
 function pickVoiceLine(guest: Guest, latest: string, said: string[], topic: string) {
@@ -753,10 +770,26 @@ export function nativeGuestText(
 
 /** The guest writes from their own originals, and from what they can read of you. */
 export function guestWriterHistory(turns: { mine: boolean; text: string; translation?: string | null }[]) {
-  return turns.map((turn) => ({
-    mine: turn.mine,
-    text: (turn.mine ? turn.translation || turn.text : turn.text).replace(/\s+/g, ' ').trim(),
-  }));
+  const seenGuest = new Set<string>();
+  const out: { mine: boolean; text: string }[] = [];
+  for (const turn of turns) {
+    const text = (turn.mine ? turn.translation || turn.text : turn.text).replace(/\s+/g, ' ').trim();
+    if (!text) continue;
+    if (!turn.mine) {
+      const keys = [text, turn.translation || '']
+        .map((line) => line.replace(/\s+/g, ' ').trim().toLowerCase())
+        .filter(Boolean);
+      if (keys.some((key) => seenGuest.has(key))) {
+        for (const key of keys) seenGuest.add(key);
+        continue;
+      }
+      for (const key of keys) seenGuest.add(key);
+    }
+    const prev = out.at(-1);
+    if (prev && prev.mine === !!turn.mine && prev.text.toLowerCase() === text.toLowerCase()) continue;
+    out.push({ mine: !!turn.mine, text });
+  }
+  return out;
 }
 
 /** Fixed guest lines. English comes from the catalog, never from a translator. */
@@ -786,6 +819,64 @@ export function scriptedGuestTurn(email: string, history: GuestTurn[], humanLang
   };
 }
 
+type GuestDraftOpts = {
+  user: { id: string; email: string; name: string; role: string; plan: string };
+  guest: Guest;
+  humanLang: string;
+  topic: string;
+  history: { mine: boolean; text: string }[];
+  already: string[];
+  sources: string[];
+};
+
+type ScriptedLine = NonNullable<ReturnType<typeof scriptedGuestTurn>>;
+
+async function uniqueGuestDraft(opts: GuestDraftOpts) {
+  const write = (avoid: string[]) =>
+    writeCafeGuestLine({
+      user: opts.user,
+      name: opts.guest.name,
+      city: opts.guest.city,
+      country: opts.guest.country,
+      bio: opts.guest.bio,
+      interests: opts.guest.interests,
+      personality: opts.guest.personality,
+      humanLang: opts.humanLang,
+      topic: opts.topic,
+      history: opts.history,
+      avoid,
+    });
+  let draft = await write(opts.already);
+  if (guestLineUsable(draft, opts.humanLang, opts.already, opts.sources)) return draft;
+  draft = await write([...opts.already, draft]);
+  if (guestLineUsable(draft, opts.humanLang, opts.already, opts.sources)) return draft;
+  if (guestLineFresh(draft, opts.humanLang, opts.already)) return draft;
+  return null;
+}
+
+function uniqueFallbackLine(said: string[]) {
+  const variants = [
+    'Your turn — one new thing from your side, not the last one.',
+    'Tell me a different small detail. I will match it.',
+    'I heard that. What happens just after it, on your street?',
+  ];
+  return variants.find((line) => !alreadySaid(said, line)) ?? 'And then? One new detail, not the same sentence.';
+}
+
+function scriptedIfFresh(scripted: ScriptedLine, already: string[], guest: Guest, humanLang: string): ScriptedLine {
+  const reader = scripted.translation || scripted.text;
+  if (!guestLineRepeats(scripted.text, already) && !guestLineRepeats(reader, already)) return scripted;
+  const line = uniqueFallbackLine(already);
+  const translate = humanLang !== guest.language;
+  return {
+    text: line,
+    language: guest.language,
+    translation: translate ? line : null,
+    translationLang: translate ? 'en' : null,
+    closed: false,
+  };
+}
+
 /** A spoken line when the model can write one. The written catalog is the backup. */
 async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[], humanLang: string, topic: string) {
   const scripted = scriptedGuestTurn(guest.email, turns, humanLang, topic);
@@ -793,65 +884,68 @@ async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[],
   const stop = !!latest && (detectStopRequest(latest) || detectSensitiveRequest(latest));
   if (!scripted || stop) return scripted;
   const visible = guestWriterHistory(turns);
-  const already = visible.filter((turn) => !turn.mine).map((turn) => turn.text);
-  const readerHistory = turns.map((turn) => ({
+  const readerHistory = guestWriterHistory(turns.map((turn) => ({
     mine: turn.mine,
     text: turn.mine ? turn.text : (turn.translation || turn.text),
-  }));
+    translation: turn.mine ? null : turn.translation,
+  })));
+  const alreadySpoken = turns
+    .filter((turn) => !turn.mine)
+    .flatMap((turn) => [turn.text, turn.translation ?? ''])
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const already = visible.filter((turn) => !turn.mine).map((turn) => turn.text);
   const alreadyRead = readerHistory.filter((turn) => !turn.mine).map((turn) => turn.text);
+  const avoid = [...new Set([...alreadySpoken, ...already, ...alreadyRead])];
   try {
     const account = await db.user.findUnique({
       where: { id: userId },
       select: { id: true, email: true, name: true, role: true, plan: true },
     });
-    if (!account) return scripted;
-    const native = await writeCafeGuestLine({
-      user: account,
-      name: guest.name,
-      city: guest.city,
-      country: guest.country,
-      bio: guest.bio,
-      interests: guest.interests,
-      personality: guest.personality,
-      humanLang: guest.language,
-      topic,
-      history: visible,
-    });
+    if (!account) return scriptedIfFresh(scripted, avoid, guest, humanLang);
     const sources = [latest, topic].filter(Boolean);
+    const voice = {
+      user: account,
+      guest,
+      topic,
+      sources,
+    };
     if (guest.language === humanLang) {
-      if (!guestLineUsable(native, humanLang, already, sources)) return scripted;
-      return { text: native, language: humanLang, translation: null, translationLang: null, closed: false };
+      const native = await uniqueGuestDraft({ ...voice, humanLang, history: visible, already: avoid });
+      if (native) return { text: native, language: humanLang, translation: null, translationLang: null, closed: false };
+      return scriptedIfFresh(scripted, avoid, guest, humanLang);
     }
+    const native = await uniqueGuestDraft({
+      ...voice,
+      humanLang: guest.language,
+      history: visible,
+      already: avoid,
+    });
+    let spoken = native || '';
     let reader = '';
-    try {
-      const t = await translateText(account, native, humanLang);
-      reader = (t.translation || '').trim();
-    } catch {
-      reader = '';
+    if (spoken) {
+      try {
+        const t = await translateText(account, spoken, humanLang);
+        reader = (t.translation || '').trim();
+      } catch {
+        reader = '';
+      }
     }
-    if (!reader || reader.toLowerCase() === native.replace(/\s+/g, ' ').trim().toLowerCase()) {
-      const draft = await writeCafeGuestLine({
-        user: account,
-        name: guest.name,
-        city: guest.city,
-        country: guest.country,
-        bio: guest.bio,
-        interests: guest.interests,
-        personality: guest.personality,
-        humanLang,
-        topic,
-        history: readerHistory,
-      });
-      if (!guestLineUsable(draft, humanLang, alreadyRead, sources)) return scripted;
-      reader = draft;
-    } else if (!guestLineUsable(reader, humanLang, alreadyRead, sources)) {
-      return scripted;
+    if (!reader || reader.toLowerCase() === spoken.replace(/\s+/g, ' ').trim().toLowerCase() || !guestLineFresh(reader, humanLang, avoid)) {
+      const draft = await uniqueGuestDraft({ ...voice, humanLang, history: readerHistory, already: avoid });
+      if (draft) reader = draft;
     }
-    let text = nativeGuestText(reader, native, scripted.text, guest.language);
-    if (draftNeedsTranslation(text, guest.language)) {
-      const t = await translateText(account, text, guest.language).catch(() => null);
+    if (!reader || !guestLineFresh(reader, humanLang, avoid)) {
+      return scriptedIfFresh(scripted, avoid, guest, humanLang);
+    }
+    let text = nativeGuestText(reader, spoken, scripted.text, guest.language);
+    if (!spoken || guestLineRepeats(text, already) || draftNeedsTranslation(text, guest.language)) {
+      const t = await translateText(account, reader, guest.language).catch(() => null);
       const next = t?.translation?.replace(/\s+/g, ' ').trim();
-      if (next && !draftNeedsTranslation(next, guest.language)) text = next;
+      if (next && !draftNeedsTranslation(next, guest.language) && !guestLineRepeats(next, already)) text = next;
+    }
+    if (guestLineRepeats(text, already) || guestLineRepeats(reader, avoid)) {
+      return scriptedIfFresh(scripted, avoid, guest, humanLang);
     }
     return {
       text,
@@ -862,7 +956,7 @@ async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[],
     };
   } catch (err) {
     console.error('[cafe-guest]', err instanceof Error ? err.message : err);
-    return scripted;
+    return scriptedIfFresh(scripted, avoid, guest, humanLang);
   }
 }
 
