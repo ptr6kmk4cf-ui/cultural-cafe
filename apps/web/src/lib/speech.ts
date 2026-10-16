@@ -216,6 +216,56 @@ export const TALK_SILENCE_MS = 1200;
 export const WORD_QUIET_MS = 3600;
 export const TYPING_HOLD_MS = 1500;
 
+/** Chrome drops a long utterance after ~15s. Keep each piece under that. */
+export const SPEAK_CHUNK_MAX = 180;
+/** Pause/resume before Chrome's speech engine times out. */
+export const SPEAK_KEEPALIVE_MS = 9000;
+
+/** Chromium (not iOS WebKit) is the engine that goes silent mid-line. */
+export function needsSpeakKeepAlive(ua = '') {
+  if (/iPhone|iPad|iPod|CriOS|FxiOS/.test(ua)) return false;
+  return /Chrome|Chromium|Edg\//.test(ua);
+}
+
+function breakLongSpeakPiece(text: string): string[] {
+  if (text.length <= SPEAK_CHUNK_MAX) return [text];
+  const out: string[] = [];
+  let rest = text;
+  while (rest.length > SPEAK_CHUNK_MAX) {
+    const slice = rest.slice(0, SPEAK_CHUNK_MAX);
+    const cut = Math.max(slice.lastIndexOf(', '), slice.lastIndexOf(' '), slice.lastIndexOf('، '));
+    const at = cut >= Math.floor(SPEAK_CHUNK_MAX * 0.4) ? cut + 1 : SPEAK_CHUNK_MAX;
+    const piece = rest.slice(0, at).trim();
+    if (piece) out.push(piece);
+    rest = rest.slice(at).trim();
+  }
+  if (rest) out.push(rest);
+  return out;
+}
+
+/** Split a table line so Hear can finish every sentence, not just the first few. */
+export function splitSpeakChunks(text: string): string[] {
+  const body = text.replace(/\s+/g, ' ').trim();
+  if (!body) return [];
+  const pieces = body.split(/(?<=[.!?…。．;；])\s+/u).map((part) => part.trim()).filter(Boolean);
+  const chunks: string[] = [];
+  let buf = '';
+  for (const part of pieces.length ? pieces : [body]) {
+    if (!buf) {
+      buf = part;
+      continue;
+    }
+    if (`${buf} ${part}`.length <= SPEAK_CHUNK_MAX) {
+      buf = `${buf} ${part}`;
+      continue;
+    }
+    chunks.push(...breakLongSpeakPiece(buf));
+    buf = part;
+  }
+  if (buf) chunks.push(...breakLongSpeakPiece(buf));
+  return chunks;
+}
+
 /** Speak stays on Typing while you talk, then Stop once you go quiet. */
 export function dictationButtonKind(hearing: boolean, spoken: boolean, openForMs: number): 'typing' | 'stop' {
   if (openForMs < TYPING_HOLD_MS) return 'typing';

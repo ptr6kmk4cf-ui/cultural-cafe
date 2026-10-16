@@ -7,9 +7,12 @@ import {
   joinDictation,
   LIVE_TRANSCRIBE_GAP_MS,
   LIVE_TRANSCRIBE_MIN_BYTES,
+  needsSpeakKeepAlive,
   recorderMime,
   shouldPaintLiveTranscript,
+  SPEAK_KEEPALIVE_MS,
   speechLocale,
+  splitSpeakChunks,
   TALK_SILENCE_MS,
   TYPING_HOLD_MS,
   WORD_QUIET_MS,
@@ -32,11 +35,28 @@ export function canSpeak() {
 
 type SpeakListener = (id: string | null) => void;
 let speakingId: string | null = null;
+let speakGen = 0;
+let speakChunks: string[] = [];
+let speakIndex = 0;
+let heardSpeech = false;
+let keepAliveTimer = 0;
+let speakWatchTimer = 0;
 const speakListeners = new Set<SpeakListener>();
 
 function notifySpeak(id: string | null) {
   speakingId = id;
   for (const listener of speakListeners) listener(id);
+}
+
+function clearSpeakTimers() {
+  if (keepAliveTimer) {
+    window.clearInterval(keepAliveTimer);
+    keepAliveTimer = 0;
+  }
+  if (speakWatchTimer) {
+    window.clearInterval(speakWatchTimer);
+    speakWatchTimer = 0;
+  }
 }
 
 function pickVoice(locale: string) {
@@ -62,28 +82,86 @@ export function unlockSpeech() {
 }
 
 export function stopSpeaking() {
-  if (!canSpeak()) return;
-  window.speechSynthesis.cancel();
+  speakGen += 1;
+  speakChunks = [];
+  speakIndex = 0;
+  heardSpeech = false;
+  clearSpeakTimers();
+  if (canSpeak()) window.speechSynthesis.cancel();
   notifySpeak(null);
 }
 
-export function speakLine(id: string, text: string, lang: string) {
-  const body = text.replace(/\s+/g, ' ').trim();
-  if (!body || !canSpeak()) return false;
-  window.speechSynthesis.cancel();
-  const locale = speechLocale(lang);
-  const utter = new SpeechSynthesisUtterance(body);
+function finishSpeak(gen: number, id: string) {
+  if (gen !== speakGen) return;
+  clearSpeakTimers();
+  speakChunks = [];
+  speakIndex = 0;
+  if (speakingId === id) notifySpeak(null);
+}
+
+function playSpeakChunk(gen: number, id: string, locale: string, voice: SpeechSynthesisVoice | null) {
+  if (gen !== speakGen || !canSpeak()) return;
+  if (speakIndex >= speakChunks.length) {
+    finishSpeak(gen, id);
+    return;
+  }
+  const index = speakIndex;
+  const utter = new SpeechSynthesisUtterance(speakChunks[index]);
   utter.lang = locale;
-  const voice = pickVoice(locale);
   if (voice) utter.voice = voice;
   utter.onend = () => {
-    if (speakingId === id) notifySpeak(null);
+    if (gen !== speakGen || speakIndex !== index) return;
+    speakIndex += 1;
+    playSpeakChunk(gen, id, locale, voice);
   };
-  utter.onerror = () => {
-    if (speakingId === id) notifySpeak(null);
+  utter.onerror = (ev) => {
+    if (gen !== speakGen || speakIndex !== index) return;
+    if (ev.error === 'interrupted' || ev.error === 'canceled') return;
+    speakIndex += 1;
+    playSpeakChunk(gen, id, locale, voice);
   };
-  notifySpeak(id);
   window.speechSynthesis.speak(utter);
+}
+
+export function speakLine(id: string, text: string, lang: string) {
+  const chunks = splitSpeakChunks(text);
+  if (!chunks.length || !canSpeak()) return false;
+  speakGen += 1;
+  const gen = speakGen;
+  speakChunks = chunks;
+  speakIndex = 0;
+  heardSpeech = false;
+  clearSpeakTimers();
+  window.speechSynthesis.cancel();
+  notifySpeak(id);
+  const locale = speechLocale(lang);
+  const voice = pickVoice(locale);
+  if (needsSpeakKeepAlive(navigator.userAgent)) {
+    keepAliveTimer = window.setInterval(() => {
+      if (gen !== speakGen) return;
+      if (!window.speechSynthesis.speaking) return;
+      window.speechSynthesis.pause();
+      window.speechSynthesis.resume();
+    }, SPEAK_KEEPALIVE_MS);
+  }
+  speakWatchTimer = window.setInterval(() => {
+    if (gen !== speakGen) return;
+    if (speakIndex >= speakChunks.length) {
+      finishSpeak(gen, id);
+      return;
+    }
+    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      heardSpeech = true;
+      return;
+    }
+    if (!heardSpeech) return;
+    speakIndex += 1;
+    playSpeakChunk(gen, id, locale, voice);
+  }, 1500);
+  window.setTimeout(() => {
+    if (gen !== speakGen) return;
+    playSpeakChunk(gen, id, locale, voice);
+  }, 40);
   return true;
 }
 

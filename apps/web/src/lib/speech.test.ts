@@ -8,9 +8,12 @@ import {
   placeAssistDraft,
   dictationButtonKind,
   joinDictation,
+  needsSpeakKeepAlive,
   recorderMime,
   shouldPaintLiveTranscript,
+  SPEAK_CHUNK_MAX,
   speechLocale,
+  splitSpeakChunks,
   spokenLine,
   visibleLine,
 } from './speech';
@@ -178,6 +181,24 @@ test('a late live transcript does not overwrite a newer one', () => {
   assert.equal(shouldPaintLiveTranscript(2, 2, 'the night train'), true);
   assert.equal(shouldPaintLiveTranscript(1, 2, 'old line'), false);
   assert.equal(shouldPaintLiveTranscript(2, 2, ''), false);
+});
+
+test('Hear splits a long table line so later sentences still play', () => {
+  const line =
+    'Sunday starts with tea at the corner bakery. Then I walk by the river until the market opens. If I miss the fruit stall the rest of the day feels borrowed. In the evening we sit outside and talk until the lights come on.';
+  const chunks = splitSpeakChunks(line);
+  assert.ok(chunks.length >= 2);
+  assert.ok(chunks.every((chunk) => chunk.length <= SPEAK_CHUNK_MAX));
+  assert.equal(chunks.join(' '), line);
+  assert.equal(splitSpeakChunks('  ').length, 0);
+  assert.deepEqual(splitSpeakChunks('Just one short line.'), ['Just one short line.']);
+});
+
+test('Chrome needs a speaker keep-alive; iPhone does not', () => {
+  assert.equal(needsSpeakKeepAlive('Mozilla/5.0 Chrome/131.0.0.0 Safari/537.36'), true);
+  assert.equal(needsSpeakKeepAlive('Mozilla/5.0 Edg/131.0.0.0'), true);
+  assert.equal(needsSpeakKeepAlive('Mozilla/5.0 iPhone OS 18_0 like Mac OS X CriOS/131.0'), false);
+  assert.equal(needsSpeakKeepAlive('Mozilla/5.0 Macintosh Intel Mac OS X Safari/19621'), false);
 });
 
 test('Speak says Typing while you talk, then Stop when you go quiet', () => {
