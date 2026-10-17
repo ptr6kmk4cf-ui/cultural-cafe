@@ -30,7 +30,7 @@ export const POST = route<{ id: string }>(async (req, { id }) => {
     }),
   );
   await rateLimit(`world-assist:${user.id}`, 20, 60_000);
-  await assertWorldAutomation(user.id, user.plan, b.auto ? 'autopilot' : 'assist');
+  await assertWorldAutomation(user.id, user.plan, b.auto ? 'autopilot' : 'assist', user.role);
   const conv = await requireParticipant(user.id, id);
   if (conv.status !== 'ACTIVE' || conv.endsAt < new Date()) {
     return json({ error: 'This table has closed.', code: 'ended' }, 409);

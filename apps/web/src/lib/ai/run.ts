@@ -10,7 +10,7 @@ import { AiConfigError, aiConfig, complete, extractJson, modelForTask, type AiRe
  * (one retry on malformed output) → usage logging.
  */
 export async function runAi<T>(user: AuthUser, req: AiRequest, schema: ZodType<T, ZodTypeDef, unknown>): Promise<{ data: T; mock: boolean }> {
-  await assertAiQuota(user.id, user.plan);
+  await assertAiQuota(user.id, user.plan, user.role);
   const cfg = aiConfig();
   let lastErr: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {

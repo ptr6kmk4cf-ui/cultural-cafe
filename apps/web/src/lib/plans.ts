@@ -42,7 +42,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
   },
 };
 
-export function assertWorldAutomation(userId: string, plan: Plan, kind: 'assist' | 'autopilot') {
+export function assertWorldAutomation(userId: string, plan: Plan, kind: 'assist' | 'autopilot', role?: string) {
   const limits = PLAN_LIMITS[plan];
   const allowed = kind === 'autopilot' ? limits.worldAutopilot : limits.worldAssist;
   if (!allowed) {
@@ -54,7 +54,7 @@ export function assertWorldAutomation(userId: string, plan: Plan, kind: 'assist'
       'premium_required',
     );
   }
-  return assertAiQuota(userId, plan);
+  return assertAiQuota(userId, plan, role);
 }
 
 /** A table is not counted against a daily cap. Anyone can sit down again. */
@@ -62,15 +62,30 @@ export async function assertWorldQuota(_userId: string, _plan: Plan) {
   return { used: 0, limit: null };
 }
 
-export async function assertAiQuota(userId: string, plan: Plan) {
+/**
+ * Daily AI requests for a plan. AI_DAILY_LIMIT_FREE / AI_DAILY_LIMIT_PREMIUM override the
+ * built-in numbers; "0", "off" or "unlimited" removes the cap. Returns null for no cap.
+ */
+export function dailyAiLimit(plan: Plan): number | null {
+  const raw = (process.env[`AI_DAILY_LIMIT_${plan}`] || '').trim().toLowerCase();
+  if (raw === '0' || raw === 'off' || raw === 'unlimited' || raw === 'none') return null;
+  const n = Number(raw);
+  if (raw && Number.isFinite(n) && n > 0) return Math.floor(n);
+  return PLAN_LIMITS[plan].aiRequestsPerDay;
+}
+
+/** Admins run the café and test it all day, so they have no daily AI cap. */
+export async function assertAiQuota(userId: string, plan: Plan, role?: string) {
+  const limit = role === 'ADMIN' ? null : dailyAiLimit(plan);
+  if (limit === null) return { used: 0, limit: null };
   const since = new Date(Date.now() - 86400_000);
   const used = await db.aiUsage.count({ where: { userId, createdAt: { gte: since }, success: true } });
-  if (used >= PLAN_LIMITS[plan].aiRequestsPerDay) {
+  if (used >= limit) {
     throw new HttpError(
       402,
-      `Daily AI limit reached for the ${PLAN_LIMITS[plan].label} plan (${PLAN_LIMITS[plan].aiRequestsPerDay}/24h).`,
+      `Daily AI limit reached for the ${PLAN_LIMITS[plan].label} plan (${limit}/24h).`,
       'quota_exceeded',
     );
   }
-  return { used, limit: PLAN_LIMITS[plan].aiRequestsPerDay };
+  return { used, limit };
 }

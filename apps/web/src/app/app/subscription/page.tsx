@@ -54,10 +54,12 @@ export default function Subscription() {
       {usage && (
         <div className="card space-y-2 text-sm">
           <h2 className="font-semibold text-white">AI usage</h2>
-          <p>Last 24h: <b className="text-white">{usage.last24h}</b> / {usage.limit24h} requests</p>
-          <div className="h-2 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full bg-gradient-to-r from-brand-500 to-amber-600" style={{ width: `${Math.min(100, (usage.last24h / usage.limit24h) * 100)}%` }} />
-          </div>
+          <p>Last 24h: <b className="text-white">{usage.last24h}</b> {usage.limit24h ? `/ ${usage.limit24h}` : '(no daily limit)'} requests</p>
+          {usage.limit24h ? (
+            <div className="h-2 overflow-hidden rounded-full bg-white/10">
+              <div className="h-full bg-gradient-to-r from-brand-500 to-amber-600" style={{ width: `${Math.min(100, (usage.last24h / usage.limit24h) * 100)}%` }} />
+            </div>
+          ) : null}
           <p className="text-xs text-ink-400">
             Last 30 days: {usage.last30d.map((f: { feature: string; count: number }) => `${f.feature} ${f.count}`).join(' · ') || 'none'} · tokens in/out {usage.tokens30d.input}/{usage.tokens30d.output}
           </p>
