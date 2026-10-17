@@ -36,8 +36,10 @@ export default function LoginPage() {
 
   useEffect(() => {
     const next = new URLSearchParams(window.location.search).get('next') || '';
-    const m = /^\/join\/([a-z2-9]+)$/.exec(next);
-    if (m) setRegisterHref(`/register?from=${m[1]}`);
+    const join = /^\/join\/([a-z2-9]+)$/.exec(next);
+    if (join) setRegisterHref(`/register?from=${join[1]}`);
+    const sit = /^\/app\/world\/open\/([a-z][a-z0-9]{0,31})$/.exec(next);
+    if (sit) setRegisterHref(`/register?sit=${sit[1]}`);
   }, []);
 
   async function submit(e: React.FormEvent) {

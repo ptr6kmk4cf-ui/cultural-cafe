@@ -7,6 +7,7 @@ import { Alert, Field } from '@/components/ui';
 import { daysInMonth, isoBirthDate } from '@/lib/birth-date';
 import { keepBrowserLogin } from '@/lib/browser-login';
 import { api } from '@/lib/client';
+import { afterRegisterPath, loginHrefForSit, readLandingSit } from '@/lib/landing-sit';
 
 const now = new Date();
 const MAX_YEAR = now.getFullYear() - 18;
@@ -25,6 +26,7 @@ export default function RegisterPage() {
     acceptTerms: false,
   });
   const [inviteCode, setInviteCode] = useState('');
+  const [sitKey, setSitKey] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -57,6 +59,8 @@ export default function RegisterPage() {
       sessionStorage.setItem('cafe_invite', from);
       setInviteCode(from);
     }
+    const sit = readLandingSit(window.location.search);
+    if (sit) setSitKey(sit);
   }, []);
 
   async function submit(e: React.FormEvent) {
@@ -81,7 +85,7 @@ export default function RegisterPage() {
         },
       });
       await keepBrowserLogin(f.email, f.password, f.name);
-      window.location.href = inviteCode ? '/app/world?from=friend' : '/app?welcome=1';
+      window.location.href = afterRegisterPath({ sit: sitKey, invite: inviteCode });
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
@@ -137,7 +141,7 @@ export default function RegisterPage() {
       </label>
       <button className="btn-primary w-full" disabled={busy}>{busy ? t('creating') : t('createAccount')}</button>
       <p className="text-center text-sm text-ink-300">
-        {t('alreadyRegistered')} <Link className="text-brand-300 hover:underline" href="/login">{t('signIn')}</Link>
+        {t('alreadyRegistered')} <Link className="text-brand-300 hover:underline" href={loginHrefForSit(sitKey)}>{t('signIn')}</Link>
       </p>
     </form>
   );

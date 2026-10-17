@@ -228,9 +228,20 @@ export function cafeGuestEmails() {
 }
 
 /** Public guest cards for the front-page wheel. No email, no scripted lines. */
+export function cafeGuestSitKey(email: string) {
+  return email.match(/^guest\.([a-z][a-z0-9]{0,31})@culturalcafe\.invalid$/)?.[1] || '';
+}
+
+export function cafeGuestEmailForSit(sit: string) {
+  const key = sit.trim().toLowerCase();
+  if (!/^[a-z][a-z0-9]{0,31}$/.test(key)) return '';
+  const email = `guest.${key}@culturalcafe.invalid`;
+  return GUESTS.some((guest) => guest.email === email) ? email : '';
+}
+
 export function cafeGuestRoster() {
   return GUESTS.map((guest) => ({
-    id: guest.name,
+    id: cafeGuestSitKey(guest.email),
     name: guest.name,
     city: guest.city,
     country: guest.country,

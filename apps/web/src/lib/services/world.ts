@@ -13,7 +13,7 @@ import { outgoingLanguages } from '../ai/lang';
 import { translateText } from '../ai/tasks';
 import { detectSensitiveRequest } from '../ai/safety';
 import { parseSignalBody, signalPhase } from '../world-signal';
-import { isLooseCafeEmail, looseCafeUserFilter, warmCafeGuests } from './cafe-guests';
+import { cafeGuestEmailForSit, isLooseCafeEmail, looseCafeUserFilter, syncCafeGuests, warmCafeGuests } from './cafe-guests';
 
 export const WORLD_SESSION_MS = 60 * 60_000;
 export const WORLD_INVITE_MS = 10 * 60_000;
@@ -713,6 +713,20 @@ export async function leaveQueue(userId: string) {
   await db.worldInvite.deleteMany({
     where: { kind: 'RANDOM', status: 'PENDING', OR: [{ fromId: userId }, { toId: userId }] },
   });
+}
+
+/** Open the guest table a first-time visitor spun before they registered. */
+export async function sitWithLandingGuest(user: AuthUser, sit: string) {
+  const email = cafeGuestEmailForSit(sit);
+  if (!email) throw notFound();
+  await warmCafeGuests();
+  let guest = await db.user.findUnique({ where: { email }, select: { id: true, synthetic: true } });
+  if (!guest?.synthetic) {
+    await syncCafeGuests();
+    guest = await db.user.findUnique({ where: { email }, select: { id: true, synthetic: true } });
+  }
+  if (!guest?.synthetic) throw notFound();
+  return inviteFromBrowse(user, guest.id);
 }
 
 export async function inviteFromBrowse(user: AuthUser, toId: string) {

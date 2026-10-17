@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { FortuneWheel } from '@/components/FortuneWheel';
 import type { WheelPerson } from '@/lib/fortune-wheel';
+import { registerHrefForSit, rememberLandingSit } from '@/lib/landing-sit';
 
 export function LandingWheel({ people }: { people: WheelPerson[] }) {
   const router = useRouter();
@@ -10,7 +11,10 @@ export function LandingWheel({ people }: { people: WheelPerson[] }) {
     <FortuneWheel
       people={people}
       sitLabel={(person) => `Join to sit with ${person.name}`}
-      onSit={() => router.push('/register')}
+      onSit={(person) => {
+        rememberLandingSit(person.id);
+        router.push(registerHrefForSit(person.id));
+      }}
     />
   );
 }
