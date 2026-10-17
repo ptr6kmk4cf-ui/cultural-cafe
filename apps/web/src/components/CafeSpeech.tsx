@@ -10,6 +10,8 @@ import {
   needsSpeakKeepAlive,
   recorderMime,
   shouldPaintLiveTranscript,
+  nextSpeechTryMs,
+  SPEAK_AFTER_CANCEL_MS,
   SPEAK_KEEPALIVE_MS,
   speechLocale,
   splitSpeakChunks,
@@ -41,11 +43,17 @@ let speakIndex = 0;
 let heardSpeech = false;
 let keepAliveTimer = 0;
 let speakWatchTimer = 0;
+let startTimer = 0;
+let chunkTries = 0;
 const speakListeners = new Set<SpeakListener>();
 
 function notifySpeak(id: string | null) {
   speakingId = id;
   for (const listener of speakListeners) listener(id);
+}
+
+export function currentSpeakingId() {
+  return speakingId;
 }
 
 function clearSpeakTimers() {
@@ -56,6 +64,10 @@ function clearSpeakTimers() {
   if (speakWatchTimer) {
     window.clearInterval(speakWatchTimer);
     speakWatchTimer = 0;
+  }
+  if (startTimer) {
+    window.clearTimeout(startTimer);
+    startTimer = 0;
   }
 }
 
@@ -86,6 +98,7 @@ export function stopSpeaking() {
   speakChunks = [];
   speakIndex = 0;
   heardSpeech = false;
+  chunkTries = 0;
   clearSpeakTimers();
   if (canSpeak()) window.speechSynthesis.cancel();
   notifySpeak(null);
@@ -96,6 +109,7 @@ function finishSpeak(gen: number, id: string) {
   clearSpeakTimers();
   speakChunks = [];
   speakIndex = 0;
+  chunkTries = 0;
   if (speakingId === id) notifySpeak(null);
 }
 
@@ -111,12 +125,24 @@ function playSpeakChunk(gen: number, id: string, locale: string, voice: SpeechSy
   if (voice) utter.voice = voice;
   utter.onend = () => {
     if (gen !== speakGen || speakIndex !== index) return;
+    chunkTries = 0;
     speakIndex += 1;
     playSpeakChunk(gen, id, locale, voice);
   };
   utter.onerror = (ev) => {
     if (gen !== speakGen || speakIndex !== index) return;
-    if (ev.error === 'interrupted' || ev.error === 'canceled') return;
+    if (ev.error === 'interrupted' || ev.error === 'canceled') {
+      if (!heardSpeech && chunkTries < 2) {
+        chunkTries += 1;
+        window.setTimeout(() => {
+          if (gen !== speakGen || speakIndex !== index) return;
+          if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+          playSpeakChunk(gen, id, locale, voice);
+        }, SPEAK_AFTER_CANCEL_MS);
+      }
+      return;
+    }
+    chunkTries = 0;
     speakIndex += 1;
     playSpeakChunk(gen, id, locale, voice);
   };
@@ -131,11 +157,32 @@ export function speakLine(id: string, text: string, lang: string) {
   speakChunks = chunks;
   speakIndex = 0;
   heardSpeech = false;
+  chunkTries = 0;
   clearSpeakTimers();
   window.speechSynthesis.cancel();
+  if (window.speechSynthesis.paused) window.speechSynthesis.resume();
   notifySpeak(id);
   const locale = speechLocale(lang);
   const voice = pickVoice(locale);
+  const startedAt = Date.now();
+  const startWhenIdle = () => {
+    if (gen !== speakGen) return;
+    const synth = window.speechSynthesis;
+    if (synth.paused) synth.resume();
+    const busy = synth.speaking || synth.pending;
+    const wait = nextSpeechTryMs(busy, Date.now() - startedAt);
+    if (wait > 0) {
+      startTimer = window.setTimeout(startWhenIdle, wait);
+      return;
+    }
+    startTimer = 0;
+    if (busy) {
+      synth.cancel();
+      if (synth.paused) synth.resume();
+    }
+    playSpeakChunk(gen, id, locale, voice);
+  };
+  startWhenIdle();
   if (needsSpeakKeepAlive(navigator.userAgent)) {
     keepAliveTimer = window.setInterval(() => {
       if (gen !== speakGen) return;
@@ -152,20 +199,21 @@ export function speakLine(id: string, text: string, lang: string) {
     }
     if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
       heardSpeech = true;
+      chunkTries = 0;
       return;
     }
-    if (!heardSpeech) return;
-    speakIndex += 1;
+    if (chunkTries >= 4) {
+      finishSpeak(gen, id);
+      return;
+    }
+    chunkTries += 1;
+    if (window.speechSynthesis.paused) window.speechSynthesis.resume();
     playSpeakChunk(gen, id, locale, voice);
-  }, 1500);
-  window.setTimeout(() => {
-    if (gen !== speakGen) return;
-    playSpeakChunk(gen, id, locale, voice);
-  }, 40);
+  }, 800);
   return true;
 }
 
-function useSpeakingId() {
+export function useSpeakingId() {
   const [id, setId] = useState<string | null>(speakingId);
   useEffect(() => {
     speakListeners.add(setId);

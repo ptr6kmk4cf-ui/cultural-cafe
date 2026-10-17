@@ -9,6 +9,7 @@ import {
   dictationButtonKind,
   joinDictation,
   needsSpeakKeepAlive,
+  nextSpeechTryMs,
   recorderMime,
   shouldPaintLiveTranscript,
   SPEAK_CHUNK_MAX,
@@ -192,6 +193,12 @@ test('Hear splits a long table line so later sentences still play', () => {
   assert.equal(chunks.join(' '), line);
   assert.equal(splitSpeakChunks('  ').length, 0);
   assert.deepEqual(splitSpeakChunks('Just one short line.'), ['Just one short line.']);
+});
+
+test('Hear starts a reply as soon as the previous line has left the speaker', () => {
+  assert.equal(nextSpeechTryMs(false, 0), 0);
+  assert.equal(nextSpeechTryMs(true, 0), 40);
+  assert.equal(nextSpeechTryMs(true, 900), 0);
 });
 
 test('Chrome needs a speaker keep-alive; iPhone does not', () => {

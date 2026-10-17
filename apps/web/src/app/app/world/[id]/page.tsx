@@ -3,14 +3,14 @@
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { isRtl, languageName } from '@conversa/shared';
-import { DictationButton, HearButton, speakLine, stopSpeaking, unlockSpeech, type DictationHandle } from '@/components/CafeSpeech';
+import { DictationButton, HearButton, currentSpeakingId, speakLine, stopSpeaking, unlockSpeech, useSpeakingId, type DictationHandle } from '@/components/CafeSpeech';
 import { useUi } from '@/components/UiLocale';
 import { Alert, Badge, Spinner, useToast } from '@/components/ui';
 import { ApiError, api } from '@/lib/client';
 import { cafeBoardUrl } from '@/lib/cafe-board-url';
 import { deviceKeepsLines, forgetDeviceLines, loadDeviceLines, saveDeviceLines, setDeviceKeepsLines } from '@/lib/cafe-device';
 import { composeAfterSwitch, composePairFromEdit, composePairFromSwitch, emptyComposePair, fillComposeOther, placeAssistDraft, spokenLine } from '@/lib/speech';
-import { AUTO_AFTER_BUBBLE_MS, GUEST_ANSWER_MS, SEND_DEBOUNCE_MS, remainingWait } from '@/lib/table-clock';
+import { GUEST_ANSWER_MS, SEND_DEBOUNCE_MS, autoAnswerDelayMs, remainingWait } from '@/lib/table-clock';
 import { bump, live } from '@/lib/table-lanes';
 import { isClosingLine } from '@/lib/table-reply';
 import { useWorldPeer } from '@/lib/world-peer';
@@ -38,6 +38,7 @@ type Conv = {
 export default function WorldChat({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { t, lang } = useUi();
+  const speakingId = useSpeakingId();
   const router = useRouter();
   const [conv, setConv] = useState<Conv | null>(null);
   const [myLang, setMyLang] = useState(lang);
@@ -599,8 +600,6 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     const last = msgs.at(-1);
     if (!last || last.mine || last.id.startsWith('local_') || last.id === heardRef.current) return;
     if (knownHear.current.has(last.id)) return;
-    knownHear.current.add(last.id);
-    heardRef.current = last.id;
     const line = spokenLine({
       ...last,
       myLanguage: myLang,
@@ -608,7 +607,9 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
       inTheirLanguage: useTheirs,
     });
     if (!line.text) return;
-    if (line.text) speakLine(last.id, line.text, line.lang);
+    knownHear.current.add(last.id);
+    heardRef.current = last.id;
+    speakLine(last.id, line.text, line.lang);
   }, [hear, ended, msgs, myLang, useTheirs]);
 
   useEffect(() => {
@@ -666,7 +667,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
   }, [auto, guestHour, msgs]);
 
   useEffect(() => {
-    if (!auto || ended || !waitFor || waitFor === lastHandled.current || assistRef.current) {
+    if (!auto || ended || sending || flipping || !waitFor || waitFor === lastHandled.current || assistRef.current) {
       if (!assistRef.current) setReading(false);
       return;
     }
@@ -674,6 +675,16 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     if (tries >= 2) {
       lastHandled.current = waitFor;
       setReading(false);
+      return;
+    }
+    const delay = autoAnswerDelayMs({
+      hear,
+      waitFor,
+      speakingId: speakingId || currentSpeakingId(),
+      claimed: heardRef.current === waitFor,
+    });
+    if (delay == null) {
+      setReading(true);
       return;
     }
     setReading(true);
@@ -690,10 +701,10 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
       autoTries.current[waitFor] = tries + 1;
       setReading(false);
       void assist(true, waitFor);
-    }, AUTO_AFTER_BUBBLE_MS);
+    }, delay);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auto, ended, waitFor, busy, nudge, guestHour]);
+  }, [auto, ended, waitFor, busy, nudge, guestHour, hear, speakingId, sending, flipping]);
 
   async function startAuto() {
     if (!confirm('Cultural Café will keep answering at this table. The other person will be told you are using help. You can turn it off any time. Continue?')) return;

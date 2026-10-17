@@ -220,6 +220,15 @@ export const TYPING_HOLD_MS = 1500;
 export const SPEAK_CHUNK_MAX = 180;
 /** Pause/resume before Chrome's speech engine times out. */
 export const SPEAK_KEEPALIVE_MS = 9000;
+/** After cancel(), Chrome drops a speak until the engine is idle. */
+export const SPEAK_AFTER_CANCEL_MS = 40;
+export const SPEAK_IDLE_WAIT_MS = 800;
+
+/** 0 = start now. Otherwise retry after this many ms until the previous line is gone. */
+export function nextSpeechTryMs(busy: boolean, waitedMs: number, cap = SPEAK_IDLE_WAIT_MS) {
+  if (busy && waitedMs < cap) return SPEAK_AFTER_CANCEL_MS;
+  return 0;
+}
 
 /** Chromium (not iOS WebKit) is the engine that goes silent mid-line. */
 export function needsSpeakKeepAlive(ua = '') {
