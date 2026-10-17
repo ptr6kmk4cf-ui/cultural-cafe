@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { InviteFriend } from '@/components/InviteFriend';
+import { PastSitList } from '@/components/PastSitList';
 import { PracticeTableButton } from '@/components/PracticeTableButton';
 import { WaitingInvites } from '@/components/WaitingInvites';
 import { getCurrentUser } from '@/lib/auth';
@@ -96,16 +97,14 @@ export default async function Home() {
         {past.length === 0 ? (
           <p className="mt-3 text-sm text-ink-400">{t('noneYet')}</p>
         ) : (
-          <ul className="mt-3 divide-y divide-white/5">
-            {past.map((c) => (
-              <li key={c.id}>
-                <Link href="/app/conversations" className="flex items-center justify-between py-2 text-sm hover:text-white">
-                  <span>{c.peer?.name ?? t('someone')}{c.prompt?.title ? ` · ${c.prompt.title}` : ''}</span>
-                  <span className="text-xs text-ink-400">{new Date(c.startedAt).toLocaleDateString()}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <PastSitList
+            hours={past.map((c) => ({
+              id: c.id,
+              startedAt: c.startedAt instanceof Date ? c.startedAt.toISOString() : String(c.startedAt),
+              prompt: c.prompt ? { title: c.prompt.title } : null,
+              peer: c.peer ? { id: c.peer.id, name: c.peer.name, guest: !!c.peer.guest } : null,
+            }))}
+          />
         )}
       </div>
     </div>

@@ -729,7 +729,26 @@ export async function sitWithLandingGuest(user: AuthUser, sit: string) {
   return inviteFromBrowse(user, guest.id);
 }
 
-export async function inviteFromBrowse(user: AuthUser, toId: string) {
+/** Spin and the map skip a real person you already sat with. Past contacts sit with them again. */
+export function browseBlocksAlreadyMet(guest: boolean, fromPast = false) {
+  return !guest && !fromPast;
+}
+
+/** Spin and the map skip people you already sat with. Past contacts is how you sit with them again. */
+export async function sitWithPastContact(user: AuthUser, peerId: string) {
+  if (peerId === user.id) throw new HttpError(400, 'You cannot sit with yourself.');
+  const pair = {
+    OR: [
+      { userAId: user.id, userBId: peerId },
+      { userAId: peerId, userBId: user.id },
+    ],
+  };
+  const rows = await db.worldConversation.findMany({ where: pair, select: { id: true } });
+  if (!rows.length) throw new HttpError(404, 'That person is not in your past contacts.', 'not_found');
+  return inviteFromBrowse(user, peerId, { fromPast: true });
+}
+
+export async function inviteFromBrowse(user: AuthUser, toId: string, opts?: { fromPast?: boolean }) {
   await expireStale(true);
   if (toId === user.id) throw new HttpError(400, 'You cannot invite yourself.');
   const theirs = await db.worldProfile.findUnique({ where: { userId: toId } });
@@ -737,7 +756,7 @@ export async function inviteFromBrowse(user: AuthUser, toId: string) {
   if (await isBlocked(user.id, toId)) throw new HttpError(403, 'You cannot contact this person.', 'blocked');
   const target = await db.user.findUnique({ where: { id: toId }, select: { synthetic: true } });
   const guestSeat = !!target?.synthetic;
-  if (!guestSeat && (await metPartnerIds(user.id)).has(toId)) {
+  if (browseBlocksAlreadyMet(guestSeat, !!opts?.fromPast) && (await metPartnerIds(user.id)).has(toId)) {
     throw new HttpError(409, 'You already sat with this person. They are listed in Past contacts.', 'already_met');
   }
   const active = await activeConversation(user.id);
