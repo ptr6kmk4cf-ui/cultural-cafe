@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { route } from '@/lib/http';
 import { serializeContact, serializeMemory, serializeMessage } from '@/lib/services/contacts';
 import { serializePhoto } from '@/lib/services/photos';
+import { exportReport } from '@/lib/services/reports';
 
 /** Full machine-readable export of everything stored about the user (GDPR art. 15/20). */
 export const GET = route(async (req) => {
@@ -62,7 +63,7 @@ export const GET = route(async (req) => {
         endedAt: c.endedAt,
         messages: [],
       })),
-      reports: u.worldReports.map((r) => ({ ...r, detail: decrypt(r.detail) })),
+      reports: u.worldReports.map(exportReport),
     },
   };
   return new Response(JSON.stringify(data, null, 2), {

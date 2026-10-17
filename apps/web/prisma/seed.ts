@@ -133,7 +133,8 @@ async function main() {
   });
   console.log(`✓ demo user: ${demoEmail}`);
 
-  await upsertUser('lucia@conversa.local', 'Lucía', pw('SEED_WORLD_PASSWORD'), 'USER', {
+  const worldEmail = process.env.SEED_WORLD_EMAIL || 'lucia@conversa.local';
+  await upsertUser(worldEmail, 'Lucía', pw('SEED_WORLD_PASSWORD'), 'USER', {
     language: 'es',
     languages: ['es', 'en'],
     city: 'Mexico City',
@@ -143,7 +144,7 @@ async function main() {
     world: true,
     inCafe: true,
   });
-  console.log('✓ local traveler: lucia@conversa.local');
+  console.log(`✓ local traveler: ${worldEmail}`);
 
   if (process.env.ADMIN_EMAIL) {
     await upsertUser(process.env.ADMIN_EMAIL.toLowerCase(), 'Admin', pw('SEED_ADMIN_PASSWORD'), 'ADMIN');

@@ -28,7 +28,9 @@
     "test:pwa": "node --env-file=apps/web/.env scripts/pwa-check.mjs",
     "chrome:install": "PUPPETEER_CACHE_DIR=.cache/puppeteer npx puppeteer browsers install chrome",
     "test:lang": "node --env-file=apps/web/.env scripts/lang-check.mjs",
-    "test:world": "node --env-file=apps/web/.env scripts/world-check.mjs"
+    "test:world": "node --env-file=apps/web/.env scripts/world-check.mjs",
+    "test:reports": "node --env-file=apps/web/.env scripts/reports-check.mjs",
+    "test:ratelimit": "node --env-file=apps/web/.env scripts/rate-limit-check.mjs"
   },
   "devDependencies": {
     "embedded-postgres": "^17.5.0-beta.15",

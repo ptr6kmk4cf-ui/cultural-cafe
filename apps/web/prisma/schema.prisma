@@ -544,10 +544,20 @@ model WorldReport {
   conversationId String?
   reason         String
   detail         String   @default("") // [enc]
+  /// Lines the reporter chose to attach from their own screen, as JSON. Chat is P2P,
+  /// so this is the reporter's copy, not a server record. [enc]
+  messages       String   @default("")
+  /// Harassment and underage reports are urgent: admins are alerted and they sort first.
+  urgent         Boolean  @default(false)
+  status         String   @default("open") // open | reviewed
+  reviewedAt     DateTime?
+  reviewedById   String?
+  alertedAt      DateTime?
   createdAt      DateTime @default(now())
   reporter       User     @relation("WorldReporter", fields: [reporterId], references: [id], onDelete: Cascade)
 
   @@index([createdAt])
+  @@index([status, urgent, createdAt])
 }
 
 model SupportTicket {
@@ -559,4 +569,15 @@ model SupportTicket {
   status    String   @default("open")
   createdAt DateTime @default(now())
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+/// Shared rate-limit counters. Every server instance (Vercel functions included)
+/// reads and bumps the same row, so limits hold across instances and cold starts.
+/// `key` is a SHA-256 hash, so IPs and user ids are not stored in plain text.
+model RateLimitBucket {
+  key     String   @id
+  count   Int
+  resetAt DateTime
+
+  @@index([resetAt])
 }

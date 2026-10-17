@@ -1,33 +1,52 @@
+import { db } from './db';
+import { sha256 } from './crypto';
 import { HttpError } from './http';
 
 /**
- * Simple in-memory fixed-window limiter. Good enough for a single instance;
- * swap for Redis (or your edge provider's limiter) when running multiple instances.
+ * Fixed-window rate limiter stored in Postgres.
+ *
+ * Every check is one atomic upsert on a shared row, so the limit holds across
+ * Vercel instances, cold starts and redeploys. The database clock decides when a
+ * window ends, so instances with drifting clocks still agree.
+ *
+ * If the database cannot be reached the request is allowed and the error is logged:
+ * a limiter outage should not take the whole site down with it.
  */
-const buckets = new Map<string, { count: number; resetAt: number }>();
 
-function pruneBuckets(now: number) {
-  for (const [key, bucket] of buckets) {
-    if (bucket.resetAt < now) buckets.delete(key);
+const CLEANUP_EVERY = 200;
+let callsSinceCleanup = 0;
+
+type Bucket = { count: number; resetAt: Date };
+
+/** Bumps the counter for `key` and returns its state after this request. */
+export async function hitRateLimit(key: string, windowMs: number): Promise<Bucket> {
+  const hashed = sha256(`rl:${key}`);
+  const ms = Math.max(1, Math.round(windowMs));
+  const rows = await db.$queryRaw<Bucket[]>`
+    INSERT INTO "RateLimitBucket" ("key", "count", "resetAt")
+    VALUES (${hashed}, 1, now() + ${ms} * interval '1 millisecond')
+    ON CONFLICT ("key") DO UPDATE SET
+      "count" = CASE WHEN "RateLimitBucket"."resetAt" <= now() THEN 1 ELSE "RateLimitBucket"."count" + 1 END,
+      "resetAt" = CASE WHEN "RateLimitBucket"."resetAt" <= now() THEN EXCLUDED."resetAt" ELSE "RateLimitBucket"."resetAt" END
+    RETURNING "count", "resetAt"`;
+  if (++callsSinceCleanup >= CLEANUP_EVERY) {
+    callsSinceCleanup = 0;
+    void db.$executeRaw`DELETE FROM "RateLimitBucket" WHERE "resetAt" < now() - interval '1 hour'`.catch(() => undefined);
   }
-  while (buckets.size > 2000) {
-    const oldest = buckets.keys().next().value;
-    if (!oldest) break;
-    buckets.delete(oldest);
-  }
+  return rows[0];
 }
 
-export function rateLimit(key: string, limit: number, windowMs: number) {
-  const now = Date.now();
-  if (buckets.size > 500) pruneBuckets(now);
-  const b = buckets.get(key);
-  if (!b || b.resetAt < now) {
-    buckets.set(key, { count: 1, resetAt: now + windowMs });
+export async function rateLimit(key: string, limit: number, windowMs: number) {
+  let bucket: Bucket;
+  try {
+    bucket = await hitRateLimit(key, windowMs);
+  } catch (e) {
+    console.error('[rate-limit] store unavailable, allowing request', (e as Error).message);
     return;
   }
-  b.count += 1;
-  if (b.count > limit) {
-    throw new HttpError(429, 'Too many requests, please slow down', 'rate_limited');
+  if (bucket.count > limit) {
+    const retryAfter = Math.max(1, Math.ceil((bucket.resetAt.getTime() - Date.now()) / 1000));
+    throw new HttpError(429, 'Too many requests, please slow down', 'rate_limited', { retryAfter });
   }
 }
 

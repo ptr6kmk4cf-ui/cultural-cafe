@@ -7,7 +7,7 @@ import { prepareWorldMessage } from '@/lib/services/world';
 /** Translates a line and returns it. Nothing is written to the database. */
 export const POST = route<{ id: string }>(async (req, { id }) => {
   const user = await requireUser(req);
-  rateLimit(`world-msg:${user.id}`, 40, 60_000);
+  await rateLimit(`world-msg:${user.id}`, 40, 60_000);
   const b = await parseBody(req, z.object({ text: z.string().trim().min(1).max(2000) }));
   return json({ message: await prepareWorldMessage(user, id, b.text) });
 });

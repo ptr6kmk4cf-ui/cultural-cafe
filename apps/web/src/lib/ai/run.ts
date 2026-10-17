@@ -3,7 +3,7 @@ import type { AuthUser } from '../auth';
 import { db } from '../db';
 import { HttpError } from '../http';
 import { assertAiQuota } from '../plans';
-import { AiConfigError, aiConfig, complete, extractJson, type AiRequest } from './provider';
+import { AiConfigError, aiConfig, complete, extractJson, modelForTask, type AiRequest } from './provider';
 
 /**
  * Runs an AI task for a user: quota check → provider call → JSON validation
@@ -43,13 +43,13 @@ export async function runAi<T>(user: AuthUser, req: AiRequest, schema: ZodType<T
       if (err instanceof AiConfigError) throw new HttpError(503, err.message, 'ai_not_configured');
       const providerErr = classifyProviderError(err);
       if (providerErr) {
-        await logFailure(user.id, req.task, cfg.provider, cfg.model);
+        await logFailure(user.id, req.task, cfg.provider, modelForTask(req.task));
         console.error('[ai] provider error', req.task, (err as Error).message);
         throw providerErr;
       }
     }
   }
-  await logFailure(user.id, req.task, cfg.provider, cfg.model);
+  await logFailure(user.id, req.task, cfg.provider, modelForTask(req.task));
   console.error('[ai] task failed', req.task, lastErr);
   throw new HttpError(502, 'The AI service returned an unusable answer. Please try again.', 'ai_failed');
 }

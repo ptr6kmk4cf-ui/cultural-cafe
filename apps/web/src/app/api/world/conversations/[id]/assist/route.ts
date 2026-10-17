@@ -29,7 +29,7 @@ export const POST = route<{ id: string }>(async (req, { id }) => {
       inTheirLanguage: z.boolean().optional(),
     }),
   );
-  rateLimit(`world-assist:${user.id}`, 20, 60_000);
+  await rateLimit(`world-assist:${user.id}`, 20, 60_000);
   await assertWorldAutomation(user.id, user.plan, b.auto ? 'autopilot' : 'assist');
   const conv = await requireParticipant(user.id, id);
   if (conv.status !== 'ACTIVE' || conv.endsAt < new Date()) {

@@ -6,6 +6,7 @@ export class HttpError extends Error {
     public status: number,
     message: string,
     public code?: string,
+    public extra?: { retryAfter?: number },
   ) {
     super(message);
   }
@@ -43,7 +44,11 @@ export function route<P = Record<string, string>>(
       return await fn(req, params);
     } catch (err) {
       if (err instanceof HttpError) {
-        return json({ error: err.message, code: err.code }, err.status);
+        const retryAfter = err.extra?.retryAfter;
+        return json(
+          { error: err.message, code: err.code, ...(retryAfter ? { retryAfter } : {}) },
+          { status: err.status, headers: retryAfter ? { 'retry-after': String(retryAfter) } : undefined },
+        );
       }
       if (err instanceof ZodError) {
         return json({ error: 'Validation failed', issues: err.issues.slice(0, 10) }, 422);

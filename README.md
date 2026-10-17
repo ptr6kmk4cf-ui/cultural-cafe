@@ -33,7 +33,8 @@ Requirements: Node ≥ 20, macOS/Linux. No Docker needed (an embedded PostgreSQL
 npm install
 cp apps/web/.env.example apps/web/.env
 # set ENCRYPTION_KEY:  node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-# AI is hardcoded to Claude Sonnet. Set an Anthropic AI_API_KEY, or the Neon AI Gateway vars.
+# AI uses Claude Sonnet. Set an Anthropic AI_API_KEY, or the Neon AI Gateway vars.
+# Optional: AI_TRANSLATION_MODEL picks a different Claude model for translation only.
 
 npm run db:start      # embedded PostgreSQL on :5433 (keep running; data in .data/pg)
 npm run db:push       # create tables
@@ -63,7 +64,11 @@ npm run test:unit
 npm run test:api
 npm run build:ext && npm run test:e2e
 npm run test:world
+npm run test:reports     # reports, admin alert, attached lines (needs ADMIN_EMAIL and Chrome)
+npm run test:ratelimit   # shared rate limits across separate processes
 ```
+
+The café tests expect a freshly seeded database. The app hides `@conversa.local` accounts from the café on purpose, so set `SEED_DEMO_EMAIL` and `SEED_WORLD_EMAIL` to another domain (for example `demo@cafe-test.example` and `lucia@cafe-test.example`) before `npm run db:seed`.
 
 ## Production (`culturalcafe.online`)
 
@@ -75,13 +80,15 @@ The live origin is **https://culturalcafe.online**. The domain is at Porkbun and
    - `DATABASE_URL` / `DIRECT_URL`
    - `ENCRYPTION_KEY` (32-byte base64)
    - Anthropic `AI_API_KEY`, or `NEON_AI_GATEWAY_TOKEN` and `NEON_AI_GATEWAY_BASE_URL`. The model is Claude Sonnet and cannot be switched.
+   - Optional `AI_TRANSLATION_MODEL` (a Claude model id) to translate with a different model than Sonnet. The Operator page shows which one is live.
+   - `RESEND_API_KEY`, so admins get an email when someone reports harassment or a possible under-18 user. Optional `REPORT_ALERT_EMAIL` adds more addresses.
 3. In Vercel → Project → Domains, add `culturalcafe.online` and `www.culturalcafe.online`.
 4. In Porkbun DNS, remove the parking A records and add the records Vercel shows (usually an A record to `10.0.1.1` for the apex, and CNAME `www` → `cname.vercel-dns.com`).
-5. Run `prisma db push` against `DIRECT_URL` once, then open https://culturalcafe.online.
+5. Run `prisma db push` against `DIRECT_URL` once (and again after pulling schema changes, e.g. the report and rate-limit tables), then open https://culturalcafe.online.
 
 ## Not done yet
 
-- Claude Sonnet is required. The offline mock and other models are refused.
+- Claude is required. The offline mock and non-Claude models are refused. Only translation can use another Claude model.
 - No real dating platforms integrated (by design until authorised).
 - Privacy policy and terms are placeholders.
 - Hosted group cafés from the earlier research note are not built; this is still 1:1 café hours with a surprise match.

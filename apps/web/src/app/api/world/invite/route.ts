@@ -6,7 +6,7 @@ import { inviteFromBrowse } from '@/lib/services/world';
 
 export const POST = route(async (req) => {
   const user = await requireUser(req);
-  rateLimit(`world-invite:${user.id}`, 20, 60 * 60_000);
+  await rateLimit(`world-invite:${user.id}`, 20, 60 * 60_000);
   const b = await parseBody(req, z.object({ toId: z.string().min(1).max(40) }));
   return json(await inviteFromBrowse(user, b.toId), 201);
 });

@@ -18,12 +18,14 @@ const NAV: { href: string; key: UiKey; icon: string }[] = [
   { href: '/app/privacy', key: 'account', icon: '⚿' },
 ];
 
-export function Sidebar({ user }: { user: { name: string; email: string; plan: string; role: string } }) {
+export function Sidebar({ user, urgentReports = 0 }: { user: { name: string; email: string; plan: string; role: string }; urgentReports?: number }) {
   const path = usePathname() ?? '';
   const { t } = useUi();
   const [open, setOpen] = useState(false);
   const active = (href: string) => (href === '/app' || href === '/app/world' ? path === href : path.startsWith(href));
-  const current = path.startsWith('/app/admin/users')
+  const current = path.startsWith('/app/admin/reports')
+    ? 'Reports'
+    : path.startsWith('/app/admin/users')
     ? 'Registered users'
     : path.startsWith('/app/admin/links')
     ? 'Live links'
@@ -42,8 +44,9 @@ export function Sidebar({ user }: { user: { name: string; email: string; plan: s
   return (
     <>
       <header className="fixed inset-x-0 top-0 z-40 flex items-center gap-3 border-b border-white/5 bg-ink-900/95 px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur md:hidden">
-        <button className="rounded-lg bg-white/5 px-3 py-2 text-white" onClick={() => setOpen(!open)} aria-label={t('menu')} aria-expanded={open}>
+        <button className="relative rounded-lg bg-white/5 px-3 py-2 text-white" onClick={() => setOpen(!open)} aria-label={t('menu')} aria-expanded={open}>
           ☰
+          {urgentReports > 0 && <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-red-500" aria-hidden />}
         </button>
         <span className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-amber-800 text-sm font-bold text-white">C</span>
         <span className="truncate text-sm font-semibold text-white">{current}</span>
@@ -72,6 +75,14 @@ export function Sidebar({ user }: { user: { name: string; email: string; plan: s
             <>
               <Link href="/app/admin" onClick={() => setOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm md:py-2 ${path === '/app/admin' ? 'bg-white/10 text-white' : 'text-ink-300 hover:bg-white/5'}`}>
                 <span className="w-4 text-center text-xs">⚙</span>Operator
+              </Link>
+              <Link href="/app/admin/reports" onClick={() => setOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm md:py-2 ${active('/app/admin/reports') ? 'bg-white/10 text-white' : 'text-ink-300 hover:bg-white/5'}`}>
+                <span className="w-4 text-center text-xs">!</span>Reports
+                {urgentReports > 0 && (
+                  <span data-urgent-badge aria-label={`${urgentReports} urgent`} className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-xs font-semibold text-white">
+                    {urgentReports}
+                  </span>
+                )}
               </Link>
               <Link href="/app/admin/users" onClick={() => setOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm md:py-2 ${active('/app/admin/users') ? 'bg-white/10 text-white' : 'text-ink-300 hover:bg-white/5'}`}>
                 <span className="w-4 text-center text-xs">@</span>Registered users

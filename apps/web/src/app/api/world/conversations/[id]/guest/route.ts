@@ -15,7 +15,7 @@ const Body = z.object({
 /** A café guest answers. The line is not written to the database. */
 export const POST = route<{ id: string }>(async (req, { id }) => {
   const user = await requireUser(req);
-  rateLimit(`world-guest:${user.id}`, 40, 60_000);
+  await rateLimit(`world-guest:${user.id}`, 40, 60_000);
   const b = await parseBody(req, Body);
   const result = await replyAsCafeGuest(user.id, id, b.history);
   return json({ message: result.message, closed: result.closed });

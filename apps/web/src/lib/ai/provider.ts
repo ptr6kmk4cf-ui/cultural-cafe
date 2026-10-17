@@ -1,7 +1,33 @@
 export type AiTask = 'opener' | 'reply' | 'translate' | 'match' | 'photo_observe' | 'photo_caption' | 'world_reply' | 'cafe_guest';
 
-/** Cultural Café calls this model and no other. Env cannot switch it. */
+/** Cultural Café calls this model for everything except translation. Env cannot switch it. */
 export const SONNET_MODEL = 'claude-sonnet-5';
+
+/** Translation uses Sonnet unless AI_TRANSLATION_MODEL names another Claude model. */
+export const DEFAULT_TRANSLATION_MODEL = SONNET_MODEL;
+const CLAUDE_MODEL_ID = /^claude-[a-z0-9][a-z0-9.-]{0,80}$/i;
+let warnedTranslationModel = '';
+
+/**
+ * The model used for live translation, from the AI_TRANSLATION_MODEL setting.
+ * Only Claude model ids are accepted (for example claude-haiku-5-5). Anything else
+ * is ignored with a warning, so a typo does not stop translation on the live site.
+ */
+export function translationModel() {
+  const raw = (process.env.AI_TRANSLATION_MODEL || '').trim();
+  if (!raw) return { model: DEFAULT_TRANSLATION_MODEL, source: 'default' as const };
+  if (CLAUDE_MODEL_ID.test(raw)) return { model: raw, source: 'setting' as const };
+  if (warnedTranslationModel !== raw) {
+    warnedTranslationModel = raw;
+    console.error(`[ai] AI_TRANSLATION_MODEL "${raw}" is not a Claude model id; using ${DEFAULT_TRANSLATION_MODEL}`);
+  }
+  return { model: DEFAULT_TRANSLATION_MODEL, source: 'invalid' as const, rejected: raw };
+}
+
+/** Which model a task runs on. Only translation can be changed. */
+export function modelForTask(task: AiTask) {
+  return task === 'translate' ? translationModel().model : SONNET_MODEL;
+}
 
 export type AiPart =
   | { type: 'text'; text: string }
@@ -123,7 +149,7 @@ async function openAiComplete(req: AiRequest, cfg: ReturnType<typeof aiConfig>):
   if (!base || /api\.openai\.com/i.test(base)) {
     throw new AiConfigError('This app only uses Claude Sonnet.');
   }
-  const model = SONNET_MODEL;
+  const model = modelForTask(req.task);
   const claude = claudeModel(model);
   const messages = [
     {
@@ -172,7 +198,7 @@ async function openAiComplete(req: AiRequest, cfg: ReturnType<typeof aiConfig>):
 }
 
 async function anthropicComplete(req: AiRequest, cfg: ReturnType<typeof aiConfig>): Promise<AiResult> {
-  const model = SONNET_MODEL;
+  const model = modelForTask(req.task);
   const data = await postJson(
     `${(cfg.baseUrl || 'https://api.anthropic.com').replace(/\/$/, '')}/v1/messages`,
     { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' },

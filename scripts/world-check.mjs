@@ -4,6 +4,7 @@ const API = process.env.CONVERSA_API_URL || 'http://localhost:3000';
 const email = process.env.SEED_DEMO_EMAIL || 'demo@conversa.local';
 const password = process.env.SEED_DEMO_PASSWORD;
 const travelerPw = process.env.SEED_WORLD_PASSWORD || password;
+const travelerEmail = process.env.SEED_WORLD_EMAIL || 'lucia@conversa.local';
 if (!password) throw new Error('SEED_DEMO_PASSWORD not set');
 
 let pass = 0;
@@ -36,7 +37,7 @@ async function reset(fn) {
 }
 
 const demoCookie = await login(email, password);
-const luciaCookie = await login('lucia@conversa.local', travelerPw);
+const luciaCookie = await login(travelerEmail, travelerPw);
 const demo = call(demoCookie);
 const lucia = call(luciaCookie);
 await demo('/api/dev/plan', { plan: 'PREMIUM' });
@@ -48,7 +49,7 @@ console.log('World setup');
 let r = await demo('/api/world/profile', { optedIn: true, city: 'Paris', country: 'France', bio: 'Weekend climber.' }, 'PUT');
 check('demo can opt in', r.status === 200 && r.data.profile?.optedIn, `status ${r.status}`);
 r = await demo('/api/world/people');
-const luciaCard = r.data.people?.find((p) => p.city === 'Mexico City');
+const luciaCard = r.data.people?.find((p) => p.city === 'Mexico City' && p.name === 'Lucía' && !p.guest);
 check('browse shows seeded travelers (no emails)', r.status === 200 && !!luciaCard && !JSON.stringify(r.data).includes('@'), `${r.data.people?.length ?? 0} people`);
 r = await demo('/api/world/invite', { toId: luciaCard?.id ?? 'x' });
 check('browse invite is demo’s yes, waiting on them', r.status === 201 && r.data.invite?.iAccepted && !r.data.invite?.theyAccepted, `status ${r.status}`);
@@ -89,7 +90,7 @@ check('money ask is flagged', r.status === 200 && r.data.message?.flagged === tr
 console.log('\nPaid AI writing');
 await lucia('/api/dev/plan', { plan: 'FREE' });
 r = await lucia(`/api/world/conversations/${convId}/assist`, { history: [{ mine: false, text: 'Hi from Mexico City' }] });
-check('Free plan is asked to pay (402)', r.status === 402 && r.data.code === 'premium_required', `${r.status} ${r.data.code}`);
+check('Free plan can draft a reply too (writing help is free since 4544c16)', r.status === 200 && !!r.data.text, `${r.status} ${r.data.code || ''}`);
 await lucia('/api/dev/plan', { plan: 'PREMIUM' });
 await demo('/api/dev/plan', { plan: 'PREMIUM' });
 r = await demo(`/api/world/conversations/${convId}/assist`, { history: [{ mine: false, text: 'What does a normal Sunday look like in Paris?' }] });
@@ -125,7 +126,7 @@ console.log('\nPeer-to-peer delivery');
   check('both browsers open a WebRTC data channel', demoOpen && luciaOpen, `demo=${demoOpen} lucia=${luciaOpen}`);
   if (demoOpen && luciaOpen) {
     await demoPage.type('textarea', 'P2P ping from Paris — can you hear me?');
-    await demoPage.click('button.btn-primary');
+    await demoPage.click('[data-world-send]');
     const seen = await luciaPage.waitForFunction(() => /P2P ping|París|escuch/i.test(document.querySelector('[data-world-thread]')?.innerText || ''), { timeout: 15000 }).then(() => true).catch(() => false);
     check('Lucia receives Demo’s line over the data channel', seen, seen ? '' : await luciaPage.$eval('[data-world-thread]', (el) => el.innerText).catch(() => 'empty'));
     check('neither browser posted chat text to /messages', demoPage._p2pPosts.length === 0 && luciaPage._p2pPosts.length === 0, `demo ${demoPage._p2pPosts.length} lucia ${luciaPage._p2pPosts.length}`);
@@ -159,7 +160,7 @@ await reset(lucia);
   check('join link is public and hides email', pub.status === 200 && !!pubData.host?.name && !JSON.stringify(pubData).includes('@'), `${pub.status} ${pubData.host?.name || pubData.error || ''}`);
   const bad = await fetch(`${API}/api/world/join/nope`, { headers: { origin: API } });
   check('unknown join code is 404', bad.status === 404, `${bad.status}`);
-  const friendEmail = `friend${Date.now()}@conversa.local`;
+  const friendEmail = `friend${Date.now()}@cafe-test.example`;
   const reg = await fetch(`${API}/api/auth/register`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', origin: API },
@@ -190,8 +191,19 @@ await reset(lucia);
 }
 
 console.log('\nRandom queue');
-const yuki = call(await login('yuki@conversa.local', travelerPw));
-const piotr = call(await login('piotr@conversa.local', travelerPw));
+async function traveler(name) {
+  const res = await fetch(`${API}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: API },
+    body: JSON.stringify({ name, email: `${name.toLowerCase()}${Date.now()}@cafe-test.example`, password: 'traveler-pass-10', birthDate: '1990-01-15', confirmAdult: true, acceptTerms: true }),
+  });
+  if (res.status !== 201) throw new Error(`register ${name} ${res.status}`);
+  const fn = call(res.headers.get('set-cookie').split(';')[0]);
+  await fn('/api/dev/plan', { plan: 'PREMIUM' });
+  return fn;
+}
+const yuki = await traveler('Yuki');
+const piotr = await traveler('Piotr');
 await reset(yuki);
 await reset(piotr);
 await demo('/api/world/queue', { action: 'leave' });

@@ -6,8 +6,8 @@ import { joinQueue, leaveQueue } from '@/lib/services/world';
 
 export const POST = route(async (req) => {
   const user = await requireUser(req);
-  rateLimit(`world-queue:${user.id}`, 30, 60_000);
-  rateLimit(`world-queue-ip:${clientIp(req)}`, 60, 60_000);
+  await rateLimit(`world-queue:${user.id}`, 30, 60_000);
+  await rateLimit(`world-queue-ip:${clientIp(req)}`, 60, 60_000);
   const b = await parseBody(req, z.object({ action: z.enum(['join', 'leave']) }));
   if (b.action === 'leave') {
     await leaveQueue(user.id);

@@ -9,7 +9,7 @@ const Body = z.object({
 });
 
 export const POST = route(async (req) => {
-  rateLimit(`reset:${clientIp(req)}`, 12, 60 * 60_000);
+  await rateLimit(`reset:${clientIp(req)}`, 12, 60 * 60_000);
   const body = await parseBody(req, Body);
   await applyPasswordReset(body.token, body.password);
   return json({ ok: true });

@@ -1,30 +1,28 @@
 import { z } from 'zod';
 import { requireUser } from '@/lib/auth';
-import { db } from '@/lib/db';
-import { encrypt } from '@/lib/crypto';
 import { json, parseBody, route, HttpError } from '@/lib/http';
 import { rateLimit } from '@/lib/rate-limit';
-
-const REASONS = ['harassment', 'spam', 'scam', 'underage_concern', 'other'] as const;
+import { attachedLineSchema, createReport, MAX_ATTACHED_LINES, REPORT_REASONS } from '@/lib/services/reports';
 
 export const POST = route(async (req) => {
   const user = await requireUser(req);
-  rateLimit(`world-report:${user.id}`, 10, 86400_000);
+  await rateLimit(`world-report:${user.id}`, 10, 86400_000);
   const b = await parseBody(req, z.object({
     userId: z.string().min(1),
     conversationId: z.string().optional(),
-    reason: z.enum(REASONS),
+    reason: z.enum(REPORT_REASONS),
     detail: z.string().trim().max(1000).default(''),
+    /** Lines the reporter picked from their own screen. The server never had the chat. */
+    lines: z.array(attachedLineSchema).max(MAX_ATTACHED_LINES).optional(),
   }));
   if (b.userId === user.id) throw new HttpError(400, 'You cannot report yourself.');
-  await db.worldReport.create({
-    data: {
-      reporterId: user.id,
-      targetId: b.userId,
-      conversationId: b.conversationId,
-      reason: b.reason,
-      detail: encrypt(b.detail),
-    },
+  const report = await createReport({
+    reporterId: user.id,
+    targetId: b.userId,
+    conversationId: b.conversationId,
+    reason: b.reason,
+    detail: b.detail,
+    lines: b.lines,
   });
-  return json({ ok: true }, 201);
+  return json({ ok: true, urgent: report.urgent, attached: report.attached }, 201);
 });

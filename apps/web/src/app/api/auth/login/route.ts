@@ -13,9 +13,9 @@ const Body = z.object({
 let dummyHash: Promise<string> | null = null;
 
 export const POST = route(async (req) => {
-  rateLimit(`login:${clientIp(req)}`, 20, 15 * 60_000);
+  await rateLimit(`login:${clientIp(req)}`, 20, 15 * 60_000);
   const body = await parseBody(req, Body);
-  rateLimit(`login-email:${body.email}`, 8, 15 * 60_000);
+  await rateLimit(`login-email:${body.email}`, 8, 15 * 60_000);
   const user = await db.user.findUnique({ where: { email: body.email } });
   dummyHash ??= hashPassword('conversa-timing-equaliser');
   const ok = await verifyPassword(body.password, user?.passwordHash ?? (await dummyHash));

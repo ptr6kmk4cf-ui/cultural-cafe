@@ -32,7 +32,7 @@ const Meta = z.object({
 
 export const POST = route(async (req) => {
   const user = await requireUser(req);
-  rateLimit(`upload:${user.id}`, 30, 10 * 60_000);
+  await rateLimit(`upload:${user.id}`, 30, 10 * 60_000);
   const count = await db.photo.count({ where: { userId: user.id } });
   if (count >= PLAN_LIMITS[user.plan].maxPhotos) throw new HttpError(402, 'Photo limit reached for your plan', 'photo_limit');
 

@@ -18,7 +18,7 @@ const Body = z.object({
 });
 
 export const POST = route(async (req) => {
-  rateLimit(`register:${clientIp(req)}`, 10, 60 * 60_000);
+  await rateLimit(`register:${clientIp(req)}`, 10, 60 * 60_000);
   const body = await parseBody(req, Body);
   if (!parseIsoBirthDate(body.birthDate)) {
     throw new HttpError(400, 'That date is not a real day. Check the day, month, and year.', 'birth_invalid');

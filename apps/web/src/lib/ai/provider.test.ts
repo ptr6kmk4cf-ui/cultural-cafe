@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AiConfigError, SONNET_MODEL, aiConfig, complete } from './provider';
+import { AiConfigError, DEFAULT_TRANSLATION_MODEL, SONNET_MODEL, aiConfig, complete, modelForTask, translationModel } from './provider';
 
-const KEYS = ['AI_PROVIDER', 'AI_API_KEY', 'AI_MODEL', 'AI_VISION_MODEL', 'AI_BASE_URL', 'NEON_AI_GATEWAY_TOKEN', 'NEON_AI_GATEWAY_BASE_URL'] as const;
+const KEYS = ['AI_PROVIDER', 'AI_API_KEY', 'AI_MODEL', 'AI_VISION_MODEL', 'AI_BASE_URL', 'AI_TRANSLATION_MODEL', 'NEON_AI_GATEWAY_TOKEN', 'NEON_AI_GATEWAY_BASE_URL'] as const;
 
 function withEnv(values: Partial<Record<(typeof KEYS)[number], string | undefined>>, fn: () => void | Promise<void>) {
   const prev = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
@@ -80,4 +80,65 @@ test('a non-Sonnet provider is refused before any request', async () => {
       return true;
     });
   });
+});
+
+test('translation uses Sonnet until AI_TRANSLATION_MODEL is set', () => {
+  withEnv({}, () => {
+    assert.equal(DEFAULT_TRANSLATION_MODEL, SONNET_MODEL);
+    assert.deepEqual(translationModel(), { model: SONNET_MODEL, source: 'default' });
+    assert.equal(modelForTask('translate'), SONNET_MODEL);
+  });
+});
+
+test('AI_TRANSLATION_MODEL changes translation only', () => {
+  withEnv({ AI_TRANSLATION_MODEL: ' claude-haiku-5-5 ' }, () => {
+    assert.deepEqual(translationModel(), { model: 'claude-haiku-5-5', source: 'setting' });
+    assert.equal(modelForTask('translate'), 'claude-haiku-5-5');
+    assert.equal(modelForTask('world_reply'), SONNET_MODEL);
+    assert.equal(modelForTask('cafe_guest'), SONNET_MODEL);
+    assert.equal(aiConfig().model, SONNET_MODEL);
+  });
+});
+
+test('a non-Claude translation model is ignored, not used', () => {
+  const errors: string[] = [];
+  const original = console.error;
+  console.error = (msg: string) => errors.push(String(msg));
+  try {
+    for (const bad of ['gpt-4o-mini', 'claude', 'claude-x; rm -rf /', 'mock']) {
+      withEnv({ AI_TRANSLATION_MODEL: bad }, () => {
+        const picked = translationModel();
+        assert.equal(picked.model, SONNET_MODEL, bad);
+        assert.equal(picked.source, 'invalid', bad);
+        assert.equal(modelForTask('translate'), SONNET_MODEL, bad);
+      });
+    }
+  } finally {
+    console.error = original;
+  }
+  assert.ok(errors.some((e) => e.includes('gpt-4o-mini')));
+});
+
+test('the chosen translation model is the one sent to the API', async () => {
+  const sent: { url: string; model: string }[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string, init: { body: string }) => {
+    sent.push({ url: String(url), model: JSON.parse(init.body).model });
+    return new Response(JSON.stringify({ content: [{ type: 'text', text: '{"ok":true}' }], usage: { input_tokens: 1, output_tokens: 1 } }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as typeof fetch;
+  try {
+    await withEnv({ AI_PROVIDER: 'anthropic', AI_API_KEY: 'sk-ant-test', AI_TRANSLATION_MODEL: 'claude-haiku-5-5' }, async () => {
+      const translated = await complete({ ...sample, task: 'translate' });
+      const replied = await complete(sample);
+      assert.equal(translated.model, 'claude-haiku-5-5');
+      assert.equal(replied.model, SONNET_MODEL);
+    });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.deepEqual(sent.map((s) => s.model), ['claude-haiku-5-5', SONNET_MODEL]);
+  assert.ok(sent.every((s) => s.url.endsWith('/v1/messages')));
 });

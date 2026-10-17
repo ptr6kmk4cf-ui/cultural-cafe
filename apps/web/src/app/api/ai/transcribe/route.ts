@@ -9,7 +9,7 @@ const MAX_BYTES = 8 * 1024 * 1024;
 
 export const POST = route(async (req) => {
   const user = await requireUser(req);
-  rateLimit(`transcribe:${user.id}`, 90, 60_000);
+  await rateLimit(`transcribe:${user.id}`, 90, 60_000);
   const form = await req.formData();
   const file = form.get('file');
   if (!(file instanceof File)) throw new HttpError(422, 'No recording');

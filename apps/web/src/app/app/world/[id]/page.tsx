@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { isRtl, languageName } from '@conversa/shared';
 import { DictationButton, HearButton, currentSpeakingId, speakLine, stopSpeaking, unlockSpeech, useSpeakingId, type DictationHandle } from '@/components/CafeSpeech';
 import { useUi } from '@/components/UiLocale';
+import { ReportDialog } from '@/components/ReportDialog';
 import { Alert, Badge, Spinner, useToast } from '@/components/ui';
 import { ApiError, api } from '@/lib/client';
 import { cafeBoardUrl } from '@/lib/cafe-board-url';
@@ -43,6 +44,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
   const [conv, setConv] = useState<Conv | null>(null);
   const [myLang, setMyLang] = useState(lang);
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [reporting, setReporting] = useState(false);
   const [text, setText] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -692,16 +694,9 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     router.push('/app/world');
   }
 
-  async function report() {
+  function report() {
     if (!conv?.peer) return;
-    const reason = prompt(t('reportReason'), 'other');
-    if (!reason) return;
-    try {
-      await api('/api/world/report', { body: { userId: conv.peer.id, conversationId: id, reason, detail: '' } });
-      show(t('reportSent'));
-    } catch (e) {
-      setError((e as Error).message);
-    }
+    setReporting(true);
   }
 
   if (!conv && !error) return <Spinner />;
@@ -814,7 +809,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
         {guestHour && <Badge>{t('guest')}</Badge>}
         {ready && !ended && <button className="btn-secondary px-3 py-1.5 text-xs" onClick={end}>{t('leaveTable')}</button>}
         <button className="btn-ghost px-2 py-1 text-xs" onClick={block}>{t('block')}</button>
-        <button className="btn-ghost px-2 py-1 text-xs" onClick={report}>{t('report')}</button>
+        <button className="btn-ghost px-2 py-1 text-xs" onClick={report} data-world-report>{t('report')}</button>
         <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={toggleKeep}>
           {keep ? t('savedDevice') : t('keepDevice')}
         </button>
@@ -924,6 +919,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
             <button
               type="button"
               className="btn-primary min-h-[3rem] self-end px-4"
+              data-world-send
               onTouchStart={(e) => {
                 e.preventDefault();
                 void send();
@@ -940,6 +936,18 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
             {keep ? t('staysOnDevice') : t('nothingSaved')}
           </p>
         </div>
+      )}
+      {reporting && conv?.peer && (
+        <ReportDialog
+          peer={{ id: conv.peer.id, name: conv.peer.name }}
+          conversationId={id}
+          lines={msgs}
+          onClose={() => setReporting(false)}
+          onSent={(attached) => {
+            setReporting(false);
+            show(attached ? t('reportSentLines', { count: attached }) : t('reportSent'));
+          }}
+        />
       )}
       {toast}
     </div>

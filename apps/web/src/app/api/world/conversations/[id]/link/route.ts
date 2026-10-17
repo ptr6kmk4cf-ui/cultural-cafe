@@ -7,7 +7,7 @@ import { releaseCafeLink, touchCafeLink } from '@/lib/services/world';
 /** Presence for the live link. Closing the hour deletes that person's connection data. */
 export const POST = route<{ id: string }>(async (req, { id }) => {
   const user = await requireUser(req);
-  rateLimit(`world-link:${user.id}`, 120, 60_000);
+  await rateLimit(`world-link:${user.id}`, 120, 60_000);
   const b = await parseBody(
     req,
     z.object({

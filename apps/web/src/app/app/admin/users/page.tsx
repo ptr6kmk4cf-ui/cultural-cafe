@@ -1,11 +1,13 @@
 import Link from 'next/link';
 import { PageHeader } from '@/components/ui';
+import { requireAdminPage } from '@/lib/admin-page';
 import { listRegisteredAccounts } from '@/lib/services/admin-users';
 import { UsersTable } from './users-table';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminUsers() {
+  await requireAdminPage();
   const users = await listRegisteredAccounts();
   return (
     <div className="space-y-6">

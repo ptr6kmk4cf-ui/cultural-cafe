@@ -11,7 +11,7 @@ export const GET = route<{ id: string }>(async (req, { id }) => {
 
 export const PUT = route<{ id: string }>(async (req, { id }) => {
   const user = await requireUser(req);
-  rateLimit(`board-save:${user.id}`, 40, 60_000);
+  await rateLimit(`board-save:${user.id}`, 40, 60_000);
   const body = await parseBody(
     req,
     z.object({

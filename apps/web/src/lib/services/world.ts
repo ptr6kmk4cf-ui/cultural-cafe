@@ -651,17 +651,23 @@ export async function joinQueue(user: AuthUser) {
   const banned = await blockedIds(user.id);
   const met = await metPartnerIds(user.id);
   const fresh = new Date(Date.now() - WORLD_QUEUE_FRESH_MS);
-  const candidates = await db.worldProfile.findMany({
-    where: {
-      optedIn: true,
-      available: true,
-      queuedAt: { gte: fresh },
-      userId: { not: user.id, notIn: [...banned, ...met] },
-    },
-    take: 20,
-    include: { user: { select: { synthetic: true, email: true } } },
-    orderBy: { queuedAt: 'asc' },
-  });
+  // Café guests sit in the queue all day with early timestamps. Look for real people
+  // separately so a crowd of guests can never push a waiting person out of the first 20.
+  const queued = (synthetic: boolean) =>
+    db.worldProfile.findMany({
+      where: {
+        optedIn: true,
+        available: true,
+        queuedAt: { gte: fresh },
+        userId: { not: user.id, notIn: [...banned, ...met] },
+        user: { synthetic },
+      },
+      take: 20,
+      include: { user: { select: { synthetic: true, email: true } } },
+      orderBy: { queuedAt: 'asc' },
+    });
+  const [realQueued, guestQueued] = await Promise.all([queued(false), queued(true)]);
+  const candidates = [...realQueued, ...guestQueued];
   const busy = new Set<string>();
   if (candidates.length) {
     const open = await db.worldConversation.findMany({
