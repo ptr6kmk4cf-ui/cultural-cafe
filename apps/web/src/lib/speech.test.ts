@@ -13,6 +13,7 @@ import {
   lastHearable,
   lastHearableId,
   nextSpeechTryMs,
+  shouldQueueSpeak,
   recorderMime,
   shouldPaintLiveTranscript,
   SPEAK_CHUNK_MAX,
@@ -202,6 +203,14 @@ test('Hear starts a reply as soon as the previous line has left the speaker', ()
   assert.equal(nextSpeechTryMs(false, 0), 0);
   assert.equal(nextSpeechTryMs(true, 0), 80);
   assert.equal(nextSpeechTryMs(true, 1100), 0);
+});
+
+test('Hear queues the next reply instead of cancelling Chrome mid-line', () => {
+  assert.equal(shouldQueueSpeak('a', 'b', true), true);
+  assert.equal(shouldQueueSpeak('a', 'b', true, true), false);
+  assert.equal(shouldQueueSpeak('a', 'a', true), false);
+  assert.equal(shouldQueueSpeak(null, 'b', true), false);
+  assert.equal(shouldQueueSpeak('a', 'b', false), false);
 });
 
 test('Hear On reads their last line, not yours', () => {

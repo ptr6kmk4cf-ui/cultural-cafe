@@ -247,6 +247,12 @@ export function nextSpeechTryMs(busy: boolean, waitedMs: number, cap = SPEAK_IDL
   return 0;
 }
 
+/** Cancel between lines is what makes Chrome go silent after one or two replies. Queue instead. */
+export function shouldQueueSpeak(currentId: string | null, nextId: string, engineLive: boolean, interrupt = false) {
+  if (interrupt || !engineLive || !currentId || currentId === nextId) return false;
+  return true;
+}
+
 /** Chromium (not iOS WebKit) is the engine that goes silent mid-line. */
 export function needsSpeakKeepAlive(ua = '') {
   if (/iPhone|iPad|iPod|CriOS|FxiOS/.test(ua)) return false;

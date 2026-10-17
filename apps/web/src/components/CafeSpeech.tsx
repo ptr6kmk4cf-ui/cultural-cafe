@@ -11,6 +11,7 @@ import {
   recorderMime,
   shouldPaintLiveTranscript,
   nextSpeechTryMs,
+  shouldQueueSpeak,
   SPEAK_AFTER_CANCEL_MS,
   SPEAK_KEEPALIVE_MS,
   speechLocale,
@@ -45,6 +46,10 @@ let keepAliveTimer = 0;
 let speakWatchTimer = 0;
 let startTimer = 0;
 let chunkTries = 0;
+let heldUtter: SpeechSynthesisUtterance | null = null;
+let pendingSpeak: { id: string; text: string; lang: string } | null = null;
+let speakLocale = 'en-US';
+let speakVoice: SpeechSynthesisVoice | null = null;
 const speakListeners = new Set<SpeakListener>();
 
 function notifySpeak(id: string | null) {
@@ -116,8 +121,14 @@ export function stopSpeaking() {
   speakIndex = 0;
   heardSpeech = false;
   chunkTries = 0;
+  heldUtter = null;
+  pendingSpeak = null;
   clearSpeakTimers();
-  if (canSpeak()) window.speechSynthesis.cancel();
+  if (canSpeak()) {
+    const synth = window.speechSynthesis;
+    synth.cancel();
+    if (synth.paused) synth.resume();
+  }
   notifySpeak(null);
 }
 
@@ -127,7 +138,17 @@ function finishSpeak(gen: number, id: string) {
   speakChunks = [];
   speakIndex = 0;
   chunkTries = 0;
+  heldUtter = null;
+  heardSpeech = false;
   if (speakingId === id) notifySpeak(null);
+  const next = pendingSpeak;
+  pendingSpeak = null;
+  if (next) {
+    window.setTimeout(() => {
+      if (speakGen !== gen) return;
+      speakLine(next.id, next.text, next.lang);
+    }, SPEAK_AFTER_CANCEL_MS);
+  }
 }
 
 function startSpeakKeepAlive(gen: number) {
@@ -140,92 +161,74 @@ function startSpeakKeepAlive(gen: number) {
   }, SPEAK_KEEPALIVE_MS);
 }
 
-function playSpeakChunk(gen: number, id: string, locale: string, voice: SpeechSynthesisVoice | null) {
+function playSpeakChunk(gen: number, id: string) {
   if (gen !== speakGen || !canSpeak()) return;
   if (speakIndex >= speakChunks.length) {
     finishSpeak(gen, id);
     return;
   }
+  const synth = window.speechSynthesis;
+  if (synth.paused) synth.resume();
   const index = speakIndex;
   const utter = new SpeechSynthesisUtterance(speakChunks[index]);
-  utter.lang = locale;
+  utter.lang = speakLocale;
   utter.volume = 1;
   utter.rate = 1;
   utter.pitch = 1;
-  if (voice) utter.voice = voice;
+  if (speakVoice) utter.voice = speakVoice;
+  heldUtter = utter;
   utter.onstart = () => {
     if (gen !== speakGen) return;
     heardSpeech = true;
     chunkTries = 0;
     startSpeakKeepAlive(gen);
+    if (!speakWatchTimer) watchSpeak(gen, id);
   };
   utter.onend = () => {
     if (gen !== speakGen || speakIndex !== index) return;
+    if (heldUtter === utter) heldUtter = null;
     chunkTries = 0;
+    heardSpeech = false;
     speakIndex += 1;
-    playSpeakChunk(gen, id, locale, voice);
+    playSpeakChunk(gen, id);
   };
   utter.onerror = (ev) => {
     if (gen !== speakGen || speakIndex !== index) return;
     if (ev.error === 'interrupted' || ev.error === 'canceled') {
+      if (synth.paused) synth.resume();
       if (!heardSpeech && chunkTries < 3) {
         chunkTries += 1;
         window.setTimeout(() => {
           if (gen !== speakGen || speakIndex !== index) return;
-          if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-          playSpeakChunk(gen, id, locale, voice);
+          if (synth.paused) synth.resume();
+          playSpeakChunk(gen, id);
         }, SPEAK_AFTER_CANCEL_MS);
       }
       return;
     }
     chunkTries = 0;
+    heardSpeech = false;
     speakIndex += 1;
-    playSpeakChunk(gen, id, locale, voice);
+    playSpeakChunk(gen, id);
   };
-  window.speechSynthesis.speak(utter);
+  synth.speak(utter);
 }
 
-export function speakLine(id: string, text: string, lang: string) {
-  const chunks = splitSpeakChunks(text);
-  if (!chunks.length || !canSpeak()) return false;
-  const synth = window.speechSynthesis;
-  if (speakingId === id && (synth.speaking || synth.pending)) return true;
-  speakGen += 1;
-  const gen = speakGen;
-  speakChunks = chunks;
-  speakIndex = 0;
-  heardSpeech = false;
-  chunkTries = 0;
-  clearSpeakTimers();
-  const wasBusy = synth.speaking || synth.pending;
-  if (wasBusy) synth.cancel();
-  if (synth.paused) synth.resume();
-  notifySpeak(id);
-  const locale = speechLocale(lang);
-  const startedAt = Date.now();
-  const startWhenReady = () => {
-    if (gen !== speakGen) return;
-    if (synth.paused) synth.resume();
-    const busy = synth.speaking || synth.pending;
-    const wait = nextSpeechTryMs(wasBusy && busy, Date.now() - startedAt);
-    if (wait > 0) {
-      startTimer = window.setTimeout(startWhenReady, wait);
-      return;
-    }
-    startTimer = 0;
-    const voice = pickVoice(locale);
-    playSpeakChunk(gen, id, locale, voice);
-  };
-  waitForVoices(gen, startWhenReady);
+function watchSpeak(gen: number, id: string) {
+  if (speakWatchTimer) return;
   speakWatchTimer = window.setInterval(() => {
     if (gen !== speakGen) return;
     if (speakIndex >= speakChunks.length) {
       finishSpeak(gen, id);
       return;
     }
-    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
-      heardSpeech = true;
-      chunkTries = 0;
+    const synth = window.speechSynthesis;
+    if (synth.paused) synth.resume();
+    if (synth.speaking || synth.pending) return;
+    if (heardSpeech) {
+      heardSpeech = false;
+      speakIndex += 1;
+      playSpeakChunk(gen, id);
       return;
     }
     if (chunkTries >= 6) {
@@ -233,9 +236,59 @@ export function speakLine(id: string, text: string, lang: string) {
       return;
     }
     chunkTries += 1;
-    if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-    playSpeakChunk(gen, id, locale, pickVoice(locale));
+    playSpeakChunk(gen, id);
   }, 500);
+}
+
+export function speakLine(id: string, text: string, lang: string, opts?: { interrupt?: boolean }) {
+  const chunks = splitSpeakChunks(text);
+  if (!chunks.length || !canSpeak()) return false;
+  const synth = window.speechSynthesis;
+  const live = synth.speaking || synth.pending;
+  if (speakingId === id && live) return true;
+  if (shouldQueueSpeak(speakingId, id, live, !!opts?.interrupt)) {
+    pendingSpeak = { id, text, lang };
+    return true;
+  }
+  pendingSpeak = null;
+  speakGen += 1;
+  const gen = speakGen;
+  speakChunks = chunks;
+  speakIndex = 0;
+  heardSpeech = false;
+  chunkTries = 0;
+  heldUtter = null;
+  clearSpeakTimers();
+  const wasBusy = live;
+  if (opts?.interrupt && wasBusy) synth.cancel();
+  if (synth.paused) synth.resume();
+  notifySpeak(id);
+  speakLocale = speechLocale(lang);
+  const startedAt = Date.now();
+  const startWhenReady = () => {
+    if (gen !== speakGen) return;
+    if (synth.paused) synth.resume();
+    const busy = synth.speaking || synth.pending;
+    const wait = nextSpeechTryMs(!!opts?.interrupt && wasBusy && busy, Date.now() - startedAt);
+    if (wait > 0) {
+      startTimer = window.setTimeout(startWhenReady, wait);
+      return;
+    }
+    startTimer = 0;
+    speakVoice = pickVoice(speakLocale);
+    playSpeakChunk(gen, id);
+    startTimer = window.setTimeout(() => {
+      if (gen !== speakGen) return;
+      if (heardSpeech || synth.speaking || synth.pending) {
+        watchSpeak(gen, id);
+        return;
+      }
+      chunkTries += 1;
+      playSpeakChunk(gen, id);
+      watchSpeak(gen, id);
+    }, 700);
+  };
+  waitForVoices(gen, startWhenReady);
   return true;
 }
 
@@ -279,7 +332,7 @@ export function HearButton({
           stopSpeaking();
           return;
         }
-        if (!canSpeak() || !speakLine(id, text, lang)) {
+        if (!canSpeak() || !speakLine(id, text, lang, { interrupt: true })) {
           window.alert(unsupported);
         }
       }}

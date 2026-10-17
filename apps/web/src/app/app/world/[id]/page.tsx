@@ -562,7 +562,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
       if (!line.text) return;
       knownHear.current.add(last.id);
       heardRef.current = last.id;
-      speakLine(last.id, line.text, line.lang);
+      speakLine(last.id, line.text, line.lang, { interrupt: true });
     } else {
       stopSpeaking();
     }
