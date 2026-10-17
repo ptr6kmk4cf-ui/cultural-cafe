@@ -2,14 +2,14 @@
 
 import { useState } from 'react';
 import { useUi } from '@/components/UiLocale';
-import { Alert } from '@/components/ui';
+import { Alert, Badge } from '@/components/ui';
 import { sitWithPastPeer } from '@/lib/past-sit';
 
 type PastHour = {
   id: string;
   startedAt: string | Date;
   prompt?: { title: string } | null;
-  peer: { id: string; name: string; guest?: boolean } | null;
+  peer: { id: string; name: string; guest?: boolean; online?: boolean } | null;
 };
 
 export function PastSitList({ hours }: { hours: PastHour[] }) {
@@ -43,16 +43,22 @@ export function PastSitList({ hours }: { hours: PastHour[] }) {
           <li key={hour.id}>
             <button
               type="button"
-              className="flex w-full items-center justify-between py-2 text-left text-sm hover:text-white disabled:opacity-60"
+              className="flex w-full items-center justify-between gap-3 py-2 text-left text-sm hover:text-white disabled:opacity-60"
               disabled={!hour.peer?.id || !!busy}
               onClick={() => void sit(hour)}
             >
-              <span>
-                {hour.peer?.name ?? t('someone')}
-                {hour.prompt?.title ? ` · ${hour.prompt.title}` : ''}
-                {busy === hour.peer?.id ? ` · ${hour.peer?.guest ? t('opening') : t('asking')}` : ''}
+              <span className="flex min-w-0 items-center gap-2">
+                {hour.peer?.online && (
+                  <span className="online-live h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400" aria-hidden />
+                )}
+                <span className="min-w-0 truncate">
+                  {hour.peer?.name ?? t('someone')}
+                  {hour.prompt?.title ? ` · ${hour.prompt.title}` : ''}
+                  {busy === hour.peer?.id ? ` · ${hour.peer?.guest ? t('opening') : t('asking')}` : ''}
+                </span>
+                {hour.peer?.online && <Badge tone="green">{t('hereNow')}</Badge>}
               </span>
-              <span className="text-xs text-ink-400">{new Date(hour.startedAt).toLocaleDateString()}</span>
+              <span className="shrink-0 text-xs text-ink-400">{new Date(hour.startedAt).toLocaleDateString()}</span>
             </button>
           </li>
         ))}

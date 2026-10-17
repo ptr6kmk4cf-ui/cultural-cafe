@@ -14,6 +14,7 @@ export const UI = {
   map: 'Map',
   online: 'Who is online',
   past: 'Past contacts',
+  hereNow: 'Here now',
   language: 'Language',
   photo: 'Photo',
   account: 'Account',

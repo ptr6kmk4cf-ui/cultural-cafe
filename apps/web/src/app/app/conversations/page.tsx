@@ -5,31 +5,10 @@ import { useEffect, useState } from 'react';
 import { useUi } from '@/components/UiLocale';
 import { Alert, Badge, Empty, PageHeader, Spinner } from '@/components/ui';
 import { api } from '@/lib/client';
-import { sitWithPastPeer } from '@/lib/past-sit';
+import { groupPastContacts, sitWithPastPeer, type PastHour } from '@/lib/past-sit';
 
-type CafeHour = {
-  id: string;
-  status: string;
-  startedAt: string;
-  prompt?: { title: string; question: string };
-  peer: { id: string; name: string; city?: string; country?: string; languageLabel?: string; guest?: boolean } | null;
-};
-
+type CafeHour = PastHour & { status: string };
 type PastContact = CafeHour & { meetings: number };
-
-function pastContacts(hours: CafeHour[]) {
-  const byPerson = new Map<string, PastContact>();
-  for (const hour of hours) {
-    if (hour.status === 'ACTIVE' || !hour.peer?.id) continue;
-    const existing = byPerson.get(hour.peer.id);
-    if (!existing) {
-      byPerson.set(hour.peer.id, { ...hour, meetings: 1 });
-      continue;
-    }
-    existing.meetings += 1;
-  }
-  return [...byPerson.values()];
-}
 
 export default function Conversations() {
   const { t } = useUi();
@@ -38,12 +17,32 @@ export default function Conversations() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   useEffect(() => {
-    api('/api/world/conversations')
-      .then((d) => setHours(d.conversations))
-      .catch((e) => {
-        setError(e.message);
-        setHours([]);
-      });
+    let live = true;
+    async function load(first: boolean) {
+      try {
+        const d = await api('/api/world/conversations');
+        if (!live) return;
+        setHours(d.conversations);
+        if (first) setError('');
+      } catch (e) {
+        if (!live) return;
+        if (first) {
+          setError((e as Error).message);
+          setHours([]);
+        }
+      }
+    }
+    void load(true);
+    const tick = window.setInterval(() => void load(false), 40_000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void load(false);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      live = false;
+      window.clearInterval(tick);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, []);
 
   async function sit(contact: PastContact) {
@@ -76,7 +75,7 @@ export default function Conversations() {
     setBusy('');
   }
 
-  const contacts = pastContacts(hours ?? []).filter((c) => {
+  const contacts = groupPastContacts(hours ?? []).filter((c) => {
     const hay = `${c.peer?.name ?? ''} ${c.peer?.city ?? ''} ${c.prompt?.title ?? ''}`.toLowerCase();
     return hay.includes(q.toLowerCase());
   });
@@ -107,6 +106,7 @@ export default function Conversations() {
             const sitLabel = c.peer?.guest
               ? t('sitWith', { name: c.peer?.name ?? t('someone') })
               : t('askName', { name: c.peer?.name ?? t('someone') });
+            const here = !!c.peer?.online;
             return (
               <article key={peerId || c.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
                 <button
@@ -115,7 +115,10 @@ export default function Conversations() {
                   disabled={!peerId || !!busy}
                   onClick={() => void sit(c)}
                 >
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand-500/40 to-amber-700/40 font-semibold text-white">{(c.peer?.name ?? 'C')[0]}</span>
+                  <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand-500/40 to-amber-700/40 font-semibold text-white">
+                    {(c.peer?.name ?? 'C')[0]}
+                    {here && <span className="online-live absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-ink-900 bg-emerald-400" />}
+                  </span>
                   <div className="min-w-0">
                     <p className="font-medium text-white">
                       {c.peer?.name ?? t('someone')}
@@ -129,6 +132,7 @@ export default function Conversations() {
                   </div>
                 </button>
                 <div className="flex shrink-0 items-center gap-2">
+                  {here && <Badge tone="green">{t('hereNow')}</Badge>}
                   {c.peer?.guest && <Badge>{t('guest')}</Badge>}
                   <span className="text-xs text-ink-400">{new Date(c.startedAt).toLocaleDateString()}</span>
                   <button
