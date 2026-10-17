@@ -69,8 +69,6 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
   const greeted = useRef('');
   const [keyboard, setKeyboard] = useState(0);
   const [keep, setKeep] = useState(false);
-  const [hear, setHear] = useState(false);
-  const hearRef = useRef(false);
   const [useTheirs, setUseTheirs] = useState(false);
   const theirsRef = useRef(false);
   const guestHourRef = useRef(false);
@@ -82,8 +80,6 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
   const prefetchGen = useRef(0);
   const tableGen = useRef(0);
   const [micPhase, setMicPhase] = useState<'idle' | 'asking' | 'listening'>('idle');
-  const knownHear = useRef(new Set<string>());
-  const heardRef = useRef('');
 
   const onRemote = useCallback((data: unknown) => {
     const m = data as Msg;
@@ -108,7 +104,6 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
   msgsRef.current = msgs;
   textRef.current = text;
   myLangRef.current = myLang;
-  hearRef.current = hear;
 
   useEffect(() => {
     bump(tableGen);
@@ -125,22 +120,11 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     msgsRef.current = saved;
     setMsgs(saved);
     greeted.current = '';
-    heardRef.current = '';
-    let hearOn = false;
     try {
-      hearOn = sessionStorage.getItem(`cafe-hear:${id}`) === '1';
-    } catch {
-      hearOn = false;
-    }
-    const playId = hearOn ? lastHearable(saved)?.id || '' : '';
-    knownHear.current = new Set(saved.map((m) => m.id).filter((lineId) => lineId !== playId));
-    try {
-      setHear(hearOn);
       const theirs = sessionStorage.getItem(`cafe-theirs:${id}`) === '1';
       theirsRef.current = theirs;
       setUseTheirs(theirs);
     } catch {
-      setHear(false);
       theirsRef.current = false;
       setUseTheirs(false);
     }
@@ -176,9 +160,6 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
   useEffect(() => {
     if (msgs.length > 200) setMsgs((current) => current.slice(-200));
     const keepIds = new Set(msgs.map((m) => m.id));
-    for (const heard of knownHear.current) {
-      if (!keepIds.has(heard)) knownHear.current.delete(heard);
-    }
     for (const tried of Object.keys(autoTries.current)) {
       if (!keepIds.has(tried)) delete autoTries.current[tried];
     }
@@ -540,32 +521,22 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     }
   }
 
-  function rememberHear(on: boolean) {
-    setHear(on);
-    try {
-      sessionStorage.setItem(`cafe-hear:${id}`, on ? '1' : '0');
-    } catch {
-      /* Private browsing can block storage. */
-    }
-    if (on) {
-      unlockSpeech();
-      const last = lastHearable(msgsRef.current);
-      knownHear.current = new Set(msgsRef.current.map((m) => m.id).filter((lineId) => lineId !== last?.id));
-      heardRef.current = '';
-      if (!last) return;
-      const line = spokenLine({
-        ...last,
-        myLanguage: myLangRef.current,
-        theirLanguage: theirLangRef.current,
-        inTheirLanguage: theirsRef.current,
-      });
-      if (!line.text) return;
-      knownHear.current.add(last.id);
-      heardRef.current = last.id;
-      speakLine(last.id, line.text, line.lang, { interrupt: true });
-    } else {
+  function hearLast() {
+    if (speakingId || currentSpeakingId()) {
       stopSpeaking();
+      return;
     }
+    unlockSpeech();
+    const last = lastHearable(msgsRef.current);
+    if (!last) return;
+    const line = spokenLine({
+      ...last,
+      myLanguage: myLangRef.current,
+      theirLanguage: theirLangRef.current,
+      inTheirLanguage: theirsRef.current,
+    });
+    if (!line.text) return;
+    speakLine(last.id, line.text, line.lang, { interrupt: true });
   }
 
   function rememberTheirs(on: boolean) {
@@ -579,13 +550,6 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
       /* Private browsing can block storage. */
     }
     stopSpeaking();
-    if (hearRef.current) {
-      const last = msgsRef.current.at(-1);
-      if (last && !last.mine && !last.id.startsWith('local_')) {
-        knownHear.current.delete(last.id);
-        if (heardRef.current === last.id) heardRef.current = '';
-      }
-    }
     if (fromTheirs === on) return;
     const next = composeAfterSwitch(draftPair.current, on);
     if (!next.needsTranslation) {
@@ -614,23 +578,6 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
         if (live(tableGen, token) && live(flipGen, gen)) setFlipping(false);
       });
   }
-
-  useEffect(() => {
-    if (!hear || ended) return;
-    const last = msgs.at(-1);
-    if (!last || last.mine || last.id.startsWith('local_') || last.id === heardRef.current) return;
-    if (knownHear.current.has(last.id)) return;
-    const line = spokenLine({
-      ...last,
-      myLanguage: myLang,
-      theirLanguage: theirLangRef.current,
-      inTheirLanguage: useTheirs,
-    });
-    if (!line.text) return;
-    knownHear.current.add(last.id);
-    heardRef.current = last.id;
-    speakLine(last.id, line.text, line.lang);
-  }, [hear, ended, msgs, myLang, useTheirs]);
 
   useEffect(() => {
     try {
@@ -698,10 +645,8 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
       return;
     }
     const delay = autoAnswerDelayMs({
-      hear,
       waitFor,
       speakingId: speakingId || currentSpeakingId(),
-      claimed: heardRef.current === waitFor,
     });
     if (delay == null) {
       setReading(true);
@@ -724,7 +669,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     }, delay);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auto, ended, waitFor, busy, nudge, guestHour, hear, speakingId, sending, flipping]);
+  }, [auto, ended, waitFor, busy, nudge, guestHour, speakingId, sending, flipping]);
 
   async function startAuto() {
     if (!confirm('Cultural Café will keep answering at this table. The other person will be told you are using help. You can turn it off any time. Continue?')) return;
@@ -791,26 +736,15 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
         )}
         <div>
           <p className="label">{t('hearThem')}</p>
-          <div className="seg" role="group" aria-label={t('hearView')}>
-            <button
-              type="button"
-              className="seg-btn"
-              aria-pressed={hear}
-              title={t('hearRepliesHint')}
-              onClick={() => rememberHear(true)}
-            >
-              {t('modeOn')}
-            </button>
-            <button
-              type="button"
-              className="seg-btn"
-              aria-pressed={!hear}
-              title={t('muteRepliesHint')}
-              onClick={() => rememberHear(false)}
-            >
-              {t('modeOff')}
-            </button>
-          </div>
+          <button
+            type="button"
+            className="btn-secondary px-3 py-1.5 text-xs"
+            title={t('hearRepliesHint')}
+            disabled={!speakingId && !lastHearable(msgs)}
+            onClick={hearLast}
+          >
+            {speakingId ? t('stopHear') : t('hearLine')}
+          </button>
         </div>
         <div>
           <p className="label">{t('autoAnswer')}</p>
@@ -835,7 +769,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <button className="btn-primary text-xs" disabled={drafting || !!last?.mine} onClick={() => assist(false)}>
+        <button className="btn-primary text-xs" disabled={drafting || !!last?.mine} onClick={() => { stopSpeaking(); void assist(false); }}>
           {drafting ? t('writing') : t('suggest')}
         </button>
         {process.env.NODE_ENV !== 'production' && !guestHour && (
@@ -967,7 +901,10 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
               value={text}
               topic={conv?.prompt?.question ?? ''}
               onChange={setCompose}
-              onPhase={setMicPhase}
+              onPhase={(phase) => {
+                if (phase === 'asking' || phase === 'listening') stopSpeaking();
+                setMicPhase(phase);
+              }}
               onError={setError}
               disabled={sending}
               label={t('speak')}

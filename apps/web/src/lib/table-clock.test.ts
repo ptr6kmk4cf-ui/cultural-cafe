@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   AUTO_AFTER_BUBBLE_MS,
-  AUTO_AFTER_HEAR_MS,
   GUEST_ANSWER_MS,
   SEND_DEBOUNCE_MS,
   autoAnswerDelayMs,
@@ -20,20 +19,6 @@ test('translation and writing count toward the guest budget', () => {
 });
 
 test('Auto Answer waits until Hear finishes their line', () => {
-  assert.equal(
-    autoAnswerDelayMs({ hear: true, waitFor: 'them-1', speakingId: 'them-1', claimed: true }),
-    null,
-  );
-  assert.equal(
-    autoAnswerDelayMs({ hear: true, waitFor: 'them-1', speakingId: null, claimed: true }),
-    AUTO_AFTER_HEAR_MS,
-  );
-  assert.equal(
-    autoAnswerDelayMs({ hear: false, waitFor: 'them-1', speakingId: null, claimed: false }),
-    AUTO_AFTER_BUBBLE_MS,
-  );
-  assert.equal(
-    autoAnswerDelayMs({ hear: true, waitFor: 'them-1', speakingId: null, claimed: false }),
-    AUTO_AFTER_BUBBLE_MS,
-  );
+  assert.equal(autoAnswerDelayMs({ waitFor: 'them-1', speakingId: 'them-1' }), null);
+  assert.equal(autoAnswerDelayMs({ waitFor: 'them-1', speakingId: null }), AUTO_AFTER_BUBBLE_MS);
 });
