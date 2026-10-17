@@ -6,13 +6,21 @@ import { CROWD } from '../cafe-crowd';
 import { VOICES } from '../cafe-voices';
 import { guestLineRepeats } from '../table-reply';
 import { cafeGuestEmails, guestFollowUp, guestSlots, guestWriterHistory, hardcodedTableReply, isLooseCafeEmail, nativeGuestText, nextHardcodedTableLine, scriptedGuestTurn } from './cafe-guests';
-import { INVITE_CODE_LENGTH, firstName, friendInviteMessage, friendJoinPath, isInviteCode, newInviteCode, normalizeInviteCode } from './world';
+import { INVITE_CODE_LENGTH, WORLD_ONLINE_MS, firstName, friendInviteMessage, friendJoinPath, isCafeOnline, isInviteCode, newInviteCode, normalizeInviteCode } from './world';
 
 test('Old test accounts are not café people', () => {
   assert.equal(isLooseCafeEmail('mei.chengdu@culturalcafe.test'), true);
   assert.equal(isLooseCafeEmail('demo@conversa.local'), true);
   assert.equal(isLooseCafeEmail('guest.mei@culturalcafe.invalid'), false);
   assert.equal(isLooseCafeEmail('someone@gmail.com'), false);
+});
+
+test('A café guest is here; a real person is here only while they are present', () => {
+  const now = Date.parse('2026-10-17T10:00:00Z');
+  assert.equal(isCafeOnline(true, new Date(now - 60 * 60_000), now), true);
+  assert.equal(isCafeOnline(false, new Date(now - 10_000), now), true);
+  assert.equal(isCafeOnline(false, new Date(now - WORLD_ONLINE_MS - 1), now), false);
+  assert.equal(isCafeOnline(false, null, now), false);
 });
 
 test('World cards show a first name only', () => {

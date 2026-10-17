@@ -20,6 +20,13 @@ export const WORLD_INVITE_MS = 10 * 60_000;
 export const WORLD_FRIEND_INVITE_MS = 24 * 60 * 60_000;
 export const WORLD_QUEUE_FRESH_MS = 90_000;
 export const WORLD_ONLINE_MS = 45_000;
+
+/** Café guests stay in the room. A real person is here only while their presence is fresh. */
+export function isCafeOnline(guest: boolean, lastSeenAt: Date | null | undefined, now = Date.now()) {
+  if (guest) return true;
+  if (!lastSeenAt) return false;
+  return now - lastSeenAt.getTime() < WORLD_ONLINE_MS;
+}
 export const INVITE_CODE_LENGTH = 8;
 const INVITE_CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 const INVITE_CODE_SET = new Set(INVITE_CODE_ALPHABET);
@@ -363,7 +370,7 @@ function cardFromUser(
     worldProfile: { city: string; country: string; gender: string; bio: string; portraitPhotoId: string | null; lastSeenAt: Date; available: boolean } | null;
   },
 ) {
-  const online = u.worldProfile ? Date.now() - u.worldProfile.lastSeenAt.getTime() < WORLD_ONLINE_MS : false;
+  const online = isCafeOnline(!!u.synthetic, u.worldProfile?.lastSeenAt);
   return {
     id: u.id,
     name: (u.personality?.displayName || u.name).trim() || 'Traveler',
