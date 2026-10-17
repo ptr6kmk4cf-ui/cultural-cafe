@@ -7,8 +7,7 @@ import { PracticeTableButton } from '@/components/PracticeTableButton';
 import { WaitingInvites } from '@/components/WaitingInvites';
 import { getCurrentUser } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { warmCafeGuests } from '@/lib/services/cafe-guests';
-import { serializeConversations } from '@/lib/services/world';
+import { serializePastHours } from '@/lib/services/world';
 import { ui } from '@/lib/ui';
 import { localeFromAcceptLanguage } from '@/lib/ui-locale';
 
@@ -25,11 +24,12 @@ export default async function Home() {
       orderBy: { startedAt: 'desc' },
       take: 5,
     }),
-    warmCafeGuests(),
   ]);
-  const cafeHours = await serializeConversations(cafeRows, user.id);
+  const cafeHours = await serializePastHours(cafeRows, user.id);
   const profileReady = !!profile?.city?.trim() && !!profile.optedIn;
-  const past = cafeHours.filter((c) => c.status !== 'ACTIVE');
+  const past = cafeHours
+    .filter((c) => c.status !== 'ACTIVE')
+    .sort((a, b) => Number(!!b.peer?.online) - Number(!!a.peer?.online));
   const lang = localeFromAcceptLanguage((await headers()).get('accept-language'));
   const t = (key: Parameters<typeof ui>[1], vars?: Parameters<typeof ui>[2]) => ui(lang, key, vars);
 
@@ -99,18 +99,7 @@ export default async function Home() {
         {past.length === 0 ? (
           <p className="mt-3 text-sm text-ink-400">{t('noneYet')}</p>
         ) : (
-          <PastSitList
-            hours={past
-              .map((c) => ({
-                id: c.id,
-                startedAt: c.startedAt instanceof Date ? c.startedAt.toISOString() : String(c.startedAt),
-                prompt: c.prompt ? { title: c.prompt.title } : null,
-                peer: c.peer
-                  ? { id: c.peer.id, name: c.peer.name, guest: !!c.peer.guest, online: !!c.peer.online }
-                  : null,
-              }))
-              .sort((a, b) => Number(!!b.peer?.online) - Number(!!a.peer?.online))}
-          />
+          <PastSitList hours={past} />
         )}
       </div>
     </div>

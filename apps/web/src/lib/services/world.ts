@@ -591,23 +591,47 @@ export async function serializeConversation(c: WorldConversation, me: string) {
   return conversationDto(c, me, await cafePeerCard(await peerId(c, me), me));
 }
 
-export async function serializeConversations(rows: WorldConversation[], me: string) {
+/** Past contacts list: name, place, language, and whether they are here. No bios or connection data. */
+export async function serializePastHours(rows: WorldConversation[], me: string) {
   if (!rows.length) return [];
-  if (rows.length === 1) return [await serializeConversation(rows[0], me)];
   const banned = await blockedIds(me);
   const ids = [...new Set(rows.map((c) => (c.userAId === me ? c.userBId : c.userAId)))].filter((id) => !banned.has(id));
   const users = ids.length
     ? await db.user.findMany({
         where: { id: { in: ids } },
-        select: { id: true, name: true, birthDate: true, synthetic: true, ...CARD_INCLUDE },
+        select: {
+          id: true,
+          name: true,
+          synthetic: true,
+          personality: { select: { displayName: true } },
+          language: { select: { myLanguage: true } },
+          worldProfile: { select: { city: true, country: true, lastSeenAt: true } },
+        },
       })
     : [];
   const byId = new Map(users.map((u) => [u.id, u]));
-  return Promise.all(rows.map((c) => {
+  return rows.map((c) => {
     const other = c.userAId === me ? c.userBId : c.userAId;
     const u = banned.has(other) ? undefined : byId.get(other);
-    return conversationDto(c, me, u ? cardFromUser(u) : null);
-  }));
+    const lang = u?.language?.myLanguage ?? 'en';
+    return {
+      id: c.id,
+      status: c.status,
+      startedAt: c.startedAt.toISOString(),
+      prompt: c.promptTitle ? { title: c.promptTitle } : null,
+      peer: u
+        ? {
+            id: u.id,
+            name: (u.personality?.displayName || u.name).trim() || 'Traveler',
+            city: u.worldProfile?.city ?? '',
+            country: u.worldProfile?.country ?? '',
+            languageLabel: languageName(lang),
+            guest: !!u.synthetic,
+            online: isCafeOnline(!!u.synthetic, u.worldProfile?.lastSeenAt),
+          }
+        : null,
+    };
+  });
 }
 
 export async function joinQueue(user: AuthUser) {

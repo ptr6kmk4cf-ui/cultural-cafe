@@ -9,6 +9,7 @@ import {
   dictationButtonKind,
   joinDictation,
   needsSpeakKeepAlive,
+  lastHearable,
   lastHearableId,
   nextSpeechTryMs,
   recorderMime,
@@ -203,14 +204,13 @@ test('Hear starts a reply as soon as the previous line has left the speaker', ()
 });
 
 test('Hear On reads their last line, not yours', () => {
-  assert.equal(
-    lastHearableId([
-      { id: 'g1', mine: false },
-      { id: 'me', mine: true },
-      { id: 'local_1', mine: false },
-    ]),
-    'g1',
-  );
+  const lines = [
+    { id: 'g1', mine: false },
+    { id: 'me', mine: true },
+    { id: 'local_1', mine: false },
+  ];
+  assert.equal(lastHearable(lines)?.id, 'g1');
+  assert.equal(lastHearableId(lines), 'g1');
   assert.equal(lastHearableId([{ id: 'me', mine: true }]), '');
 });
 

@@ -9,7 +9,7 @@ import { Alert, Badge, Spinner, useToast } from '@/components/ui';
 import { ApiError, api } from '@/lib/client';
 import { cafeBoardUrl } from '@/lib/cafe-board-url';
 import { deviceKeepsLines, forgetDeviceLines, loadDeviceLines, saveDeviceLines, setDeviceKeepsLines } from '@/lib/cafe-device';
-import { composeAfterSwitch, composePairFromEdit, composePairFromSwitch, emptyComposePair, fillComposeOther, lastHearableId, placeAssistDraft, spokenLine } from '@/lib/speech';
+import { composeAfterSwitch, composePairFromEdit, composePairFromSwitch, emptyComposePair, fillComposeOther, lastHearable, placeAssistDraft, spokenLine } from '@/lib/speech';
 import { GUEST_ANSWER_MS, SEND_DEBOUNCE_MS, autoAnswerDelayMs, remainingWait } from '@/lib/table-clock';
 import { bump, live } from '@/lib/table-lanes';
 import { isClosingLine } from '@/lib/table-reply';
@@ -132,7 +132,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     } catch {
       hearOn = false;
     }
-    const playId = hearOn ? lastHearableId(saved) : '';
+    const playId = hearOn ? lastHearable(saved)?.id || '' : '';
     knownHear.current = new Set(saved.map((m) => m.id).filter((lineId) => lineId !== playId));
     try {
       setHear(hearOn);
@@ -549,7 +549,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     }
     if (on) {
       unlockSpeech();
-      const last = msgsRef.current.find((m) => m.id === lastHearableId(msgsRef.current));
+      const last = lastHearable(msgsRef.current);
       knownHear.current = new Set(msgsRef.current.map((m) => m.id).filter((lineId) => lineId !== last?.id));
       heardRef.current = '';
       if (!last) return;
@@ -580,8 +580,8 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     }
     stopSpeaking();
     if (hearRef.current) {
-      const last = msgsRef.current.at(-1);
-      if (last && !last.mine) {
+      const last = lastHearable(msgsRef.current);
+      if (last) {
         knownHear.current.delete(last.id);
         if (heardRef.current === last.id) heardRef.current = '';
       }
@@ -617,8 +617,8 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
 
   useEffect(() => {
     if (!hear || ended) return;
-    const last = msgs.at(-1);
-    if (!last || last.mine || last.id.startsWith('local_') || last.id === heardRef.current) return;
+    const last = lastHearable(msgs);
+    if (!last || last.id === heardRef.current) return;
     if (knownHear.current.has(last.id)) return;
     const line = spokenLine({
       ...last,

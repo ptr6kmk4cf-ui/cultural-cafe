@@ -225,12 +225,16 @@ export const SPEAK_AFTER_CANCEL_MS = 80;
 export const SPEAK_IDLE_WAIT_MS = 1000;
 
 /** The last line Hear should read when you turn it on. Your own bubbles stay quiet. */
-export function lastHearableId(msgs: { id: string; mine?: boolean }[]) {
+export function lastHearable<T extends { id: string; mine?: boolean }>(msgs: T[]) {
   for (let i = msgs.length - 1; i >= 0; i -= 1) {
     const line = msgs[i];
-    if (line && !line.mine && !line.id.startsWith('local_')) return line.id;
+    if (line && !line.mine && !line.id.startsWith('local_')) return line;
   }
-  return '';
+  return undefined;
+}
+
+export function lastHearableId(msgs: { id: string; mine?: boolean }[]) {
+  return lastHearable(msgs)?.id || '';
 }
 
 /** 0 = start now. Otherwise retry after this many ms until the previous line is gone. */

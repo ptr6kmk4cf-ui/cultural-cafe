@@ -228,9 +228,9 @@ export function FortuneWheel({
                   <p className="text-sm text-ink-300">
                     Reads {winner.languageLabel}
                     {alsoReads.length > 0 ? ` · Also ${alsoReads.join(', ')}` : ''}
-                    {winner.online ? ' · Here now' : ''}
+                    {winner.online ? ` · ${t('hereNow')}` : ''}
                   </p>
-                  {winner.guest && <span className="mt-2 inline-flex"><Badge>Guest</Badge></span>}
+                  {winner.guest && <span className="mt-2 inline-flex"><Badge>{t('guest')}</Badge></span>}
                 </Slow>
                 {winner.bio && (
                   <Slow on={seen('bio')}>
