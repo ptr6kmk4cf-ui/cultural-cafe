@@ -33,14 +33,12 @@ export default function Conversations() {
       }
     }
     void load(true);
-    const tick = window.setInterval(() => void load(false), 40_000);
     const onVis = () => {
       if (document.visibilityState === 'visible') void load(false);
     };
     document.addEventListener('visibilitychange', onVis);
     return () => {
       live = false;
-      window.clearInterval(tick);
       document.removeEventListener('visibilitychange', onVis);
     };
   }, []);

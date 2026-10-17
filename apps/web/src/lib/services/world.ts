@@ -756,7 +756,7 @@ export async function sitWithPastContact(user: AuthUser, peerId: string) {
 }
 
 export async function inviteFromBrowse(user: AuthUser, toId: string, opts?: { fromPast?: boolean }) {
-  await expireStale(true);
+  if (!opts?.fromPast) await expireStale(true);
   if (toId === user.id) throw new HttpError(400, 'You cannot invite yourself.');
   const theirs = await db.worldProfile.findUnique({ where: { userId: toId } });
   if (!theirs?.optedIn) throw notFound();

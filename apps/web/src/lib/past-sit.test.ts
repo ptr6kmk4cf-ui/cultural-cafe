@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { groupPastContacts } from './past-sit';
+import { groupPastContacts, SIT_PAST_MS } from './past-sit';
 import { browseBlocksAlreadyMet } from './services/world';
 
 test('A past contact can sit again, including a real person you already met', () => {
@@ -11,6 +11,11 @@ test('A past contact can sit again, including a real person you already met', ()
 test('Spin still skips a real person you already sat with', () => {
   assert.equal(browseBlocksAlreadyMet(false, false), true);
   assert.equal(browseBlocksAlreadyMet(true, false), false);
+});
+
+test('Sit with a past contact stops waiting after a short timeout', () => {
+  assert.ok(SIT_PAST_MS >= 8_000);
+  assert.ok(SIT_PAST_MS <= 15_000);
 });
 
 test('Past contacts put people who are here now at the top', () => {

@@ -33,13 +33,25 @@ export function groupPastContacts<T extends PastHour>(hours: T[]) {
   return [...byPerson.values()].sort((a, b) => Number(!!b.peer?.online) - Number(!!a.peer?.online));
 }
 
+export const SIT_PAST_MS = 12_000;
+
 export async function sitWithPastPeer(peerId: string) {
-  const result = await api<{ conversation?: { id: string } | null }>('/api/world/contacts/sit', {
-    body: { peerId },
-  });
-  if (result.conversation?.id) {
-    window.location.href = `/app/world/${result.conversation.id}`;
-    return 'open' as const;
+  const ac = new AbortController();
+  const timer = window.setTimeout(() => ac.abort(), SIT_PAST_MS);
+  try {
+    const result = await api<{ conversation?: { id: string } | null }>('/api/world/contacts/sit', {
+      body: { peerId },
+      signal: ac.signal,
+    });
+    if (result.conversation?.id) {
+      window.location.href = `/app/world/${result.conversation.id}`;
+      return 'open' as const;
+    }
+    return 'waiting' as const;
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') throw new Error('Could not open that table. Tap Sit with again.');
+    throw err;
+  } finally {
+    window.clearTimeout(timer);
   }
-  return 'waiting' as const;
 }
