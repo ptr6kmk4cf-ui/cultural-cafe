@@ -9,6 +9,7 @@ import {
   dictationButtonKind,
   joinDictation,
   needsSpeakKeepAlive,
+  lastHearableId,
   nextSpeechTryMs,
   recorderMime,
   shouldPaintLiveTranscript,
@@ -197,8 +198,20 @@ test('Hear splits a long table line so later sentences still play', () => {
 
 test('Hear starts a reply as soon as the previous line has left the speaker', () => {
   assert.equal(nextSpeechTryMs(false, 0), 0);
-  assert.equal(nextSpeechTryMs(true, 0), 40);
-  assert.equal(nextSpeechTryMs(true, 900), 0);
+  assert.equal(nextSpeechTryMs(true, 0), 80);
+  assert.equal(nextSpeechTryMs(true, 1100), 0);
+});
+
+test('Hear On reads their last line, not yours', () => {
+  assert.equal(
+    lastHearableId([
+      { id: 'g1', mine: false },
+      { id: 'me', mine: true },
+      { id: 'local_1', mine: false },
+    ]),
+    'g1',
+  );
+  assert.equal(lastHearableId([{ id: 'me', mine: true }]), '');
 });
 
 test('Chrome needs a speaker keep-alive; iPhone does not', () => {

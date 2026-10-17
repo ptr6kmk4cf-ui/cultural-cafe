@@ -221,8 +221,17 @@ export const SPEAK_CHUNK_MAX = 180;
 /** Pause/resume before Chrome's speech engine times out. */
 export const SPEAK_KEEPALIVE_MS = 9000;
 /** After cancel(), Chrome drops a speak until the engine is idle. */
-export const SPEAK_AFTER_CANCEL_MS = 40;
-export const SPEAK_IDLE_WAIT_MS = 800;
+export const SPEAK_AFTER_CANCEL_MS = 80;
+export const SPEAK_IDLE_WAIT_MS = 1000;
+
+/** The last line Hear should read when you turn it on. Your own bubbles stay quiet. */
+export function lastHearableId(msgs: { id: string; mine?: boolean }[]) {
+  for (let i = msgs.length - 1; i >= 0; i -= 1) {
+    const line = msgs[i];
+    if (line && !line.mine && !line.id.startsWith('local_')) return line.id;
+  }
+  return '';
+}
 
 /** 0 = start now. Otherwise retry after this many ms until the previous line is gone. */
 export function nextSpeechTryMs(busy: boolean, waitedMs: number, cap = SPEAK_IDLE_WAIT_MS) {

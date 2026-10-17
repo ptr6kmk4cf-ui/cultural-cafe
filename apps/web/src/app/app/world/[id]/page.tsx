@@ -9,7 +9,7 @@ import { Alert, Badge, Spinner, useToast } from '@/components/ui';
 import { ApiError, api } from '@/lib/client';
 import { cafeBoardUrl } from '@/lib/cafe-board-url';
 import { deviceKeepsLines, forgetDeviceLines, loadDeviceLines, saveDeviceLines, setDeviceKeepsLines } from '@/lib/cafe-device';
-import { composeAfterSwitch, composePairFromEdit, composePairFromSwitch, emptyComposePair, fillComposeOther, placeAssistDraft, spokenLine } from '@/lib/speech';
+import { composeAfterSwitch, composePairFromEdit, composePairFromSwitch, emptyComposePair, fillComposeOther, lastHearableId, placeAssistDraft, spokenLine } from '@/lib/speech';
 import { GUEST_ANSWER_MS, SEND_DEBOUNCE_MS, autoAnswerDelayMs, remainingWait } from '@/lib/table-clock';
 import { bump, live } from '@/lib/table-lanes';
 import { isClosingLine } from '@/lib/table-reply';
@@ -126,9 +126,16 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     setMsgs(saved);
     greeted.current = '';
     heardRef.current = '';
-    knownHear.current = new Set(saved.map((m) => m.id));
+    let hearOn = false;
     try {
-      setHear(sessionStorage.getItem(`cafe-hear:${id}`) === '1');
+      hearOn = sessionStorage.getItem(`cafe-hear:${id}`) === '1';
+    } catch {
+      hearOn = false;
+    }
+    const playId = hearOn ? lastHearableId(saved) : '';
+    knownHear.current = new Set(saved.map((m) => m.id).filter((lineId) => lineId !== playId));
+    try {
+      setHear(hearOn);
       const theirs = sessionStorage.getItem(`cafe-theirs:${id}`) === '1';
       theirsRef.current = theirs;
       setUseTheirs(theirs);
@@ -541,8 +548,21 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
       /* Private browsing can block storage. */
     }
     if (on) {
-      knownHear.current = new Set(msgsRef.current.map((m) => m.id));
       unlockSpeech();
+      const last = msgsRef.current.find((m) => m.id === lastHearableId(msgsRef.current));
+      knownHear.current = new Set(msgsRef.current.map((m) => m.id).filter((lineId) => lineId !== last?.id));
+      heardRef.current = '';
+      if (!last) return;
+      const line = spokenLine({
+        ...last,
+        myLanguage: myLangRef.current,
+        theirLanguage: theirLangRef.current,
+        inTheirLanguage: theirsRef.current,
+      });
+      if (!line.text) return;
+      knownHear.current.add(last.id);
+      heardRef.current = last.id;
+      speakLine(last.id, line.text, line.lang);
     } else {
       stopSpeaking();
     }

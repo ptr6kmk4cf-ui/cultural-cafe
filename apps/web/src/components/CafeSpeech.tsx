@@ -84,13 +84,30 @@ function pickVoice(locale: string) {
   );
 }
 
-/** Safari only unlocks voices after a tap. A silent period is enough. */
+/** Load voices and wake a paused engine. Do not speak a dummy line — Chrome then drops the real one. */
 export function unlockSpeech() {
   if (!canSpeak()) return;
   window.speechSynthesis.getVoices();
-  const warm = new SpeechSynthesisUtterance('.');
-  warm.volume = 0;
-  window.speechSynthesis.speak(warm);
+  if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+}
+
+function waitForVoices(gen: number, then: () => void) {
+  const go = () => {
+    if (gen !== speakGen) return;
+    then();
+  };
+  if (window.speechSynthesis.getVoices().length) {
+    go();
+    return;
+  }
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    go();
+  };
+  window.speechSynthesis.addEventListener('voiceschanged', finish, { once: true });
+  window.setTimeout(finish, 400);
 }
 
 export function stopSpeaking() {
@@ -113,6 +130,16 @@ function finishSpeak(gen: number, id: string) {
   if (speakingId === id) notifySpeak(null);
 }
 
+function startSpeakKeepAlive(gen: number) {
+  if (keepAliveTimer || !needsSpeakKeepAlive(navigator.userAgent)) return;
+  keepAliveTimer = window.setInterval(() => {
+    if (gen !== speakGen) return;
+    if (!window.speechSynthesis.speaking) return;
+    window.speechSynthesis.pause();
+    window.speechSynthesis.resume();
+  }, SPEAK_KEEPALIVE_MS);
+}
+
 function playSpeakChunk(gen: number, id: string, locale: string, voice: SpeechSynthesisVoice | null) {
   if (gen !== speakGen || !canSpeak()) return;
   if (speakIndex >= speakChunks.length) {
@@ -122,7 +149,16 @@ function playSpeakChunk(gen: number, id: string, locale: string, voice: SpeechSy
   const index = speakIndex;
   const utter = new SpeechSynthesisUtterance(speakChunks[index]);
   utter.lang = locale;
+  utter.volume = 1;
+  utter.rate = 1;
+  utter.pitch = 1;
   if (voice) utter.voice = voice;
+  utter.onstart = () => {
+    if (gen !== speakGen) return;
+    heardSpeech = true;
+    chunkTries = 0;
+    startSpeakKeepAlive(gen);
+  };
   utter.onend = () => {
     if (gen !== speakGen || speakIndex !== index) return;
     chunkTries = 0;
@@ -132,7 +168,7 @@ function playSpeakChunk(gen: number, id: string, locale: string, voice: SpeechSy
   utter.onerror = (ev) => {
     if (gen !== speakGen || speakIndex !== index) return;
     if (ev.error === 'interrupted' || ev.error === 'canceled') {
-      if (!heardSpeech && chunkTries < 2) {
+      if (!heardSpeech && chunkTries < 3) {
         chunkTries += 1;
         window.setTimeout(() => {
           if (gen !== speakGen || speakIndex !== index) return;
@@ -159,38 +195,27 @@ export function speakLine(id: string, text: string, lang: string) {
   heardSpeech = false;
   chunkTries = 0;
   clearSpeakTimers();
-  window.speechSynthesis.cancel();
-  if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+  const synth = window.speechSynthesis;
+  const wasBusy = synth.speaking || synth.pending;
+  if (wasBusy) synth.cancel();
+  if (synth.paused) synth.resume();
   notifySpeak(id);
   const locale = speechLocale(lang);
-  const voice = pickVoice(locale);
   const startedAt = Date.now();
-  const startWhenIdle = () => {
+  const startWhenReady = () => {
     if (gen !== speakGen) return;
-    const synth = window.speechSynthesis;
     if (synth.paused) synth.resume();
     const busy = synth.speaking || synth.pending;
-    const wait = nextSpeechTryMs(busy, Date.now() - startedAt);
+    const wait = nextSpeechTryMs(wasBusy && busy, Date.now() - startedAt);
     if (wait > 0) {
-      startTimer = window.setTimeout(startWhenIdle, wait);
+      startTimer = window.setTimeout(startWhenReady, wait);
       return;
     }
     startTimer = 0;
-    if (busy) {
-      synth.cancel();
-      if (synth.paused) synth.resume();
-    }
+    const voice = pickVoice(locale);
     playSpeakChunk(gen, id, locale, voice);
   };
-  startWhenIdle();
-  if (needsSpeakKeepAlive(navigator.userAgent)) {
-    keepAliveTimer = window.setInterval(() => {
-      if (gen !== speakGen) return;
-      if (!window.speechSynthesis.speaking) return;
-      window.speechSynthesis.pause();
-      window.speechSynthesis.resume();
-    }, SPEAK_KEEPALIVE_MS);
-  }
+  waitForVoices(gen, startWhenReady);
   speakWatchTimer = window.setInterval(() => {
     if (gen !== speakGen) return;
     if (speakIndex >= speakChunks.length) {
@@ -202,14 +227,14 @@ export function speakLine(id: string, text: string, lang: string) {
       chunkTries = 0;
       return;
     }
-    if (chunkTries >= 4) {
+    if (chunkTries >= 6) {
       finishSpeak(gen, id);
       return;
     }
     chunkTries += 1;
     if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-    playSpeakChunk(gen, id, locale, voice);
-  }, 800);
+    playSpeakChunk(gen, id, locale, pickVoice(locale));
+  }, 500);
   return true;
 }
 
