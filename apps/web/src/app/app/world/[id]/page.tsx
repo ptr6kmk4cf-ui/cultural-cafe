@@ -522,6 +522,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
   }
 
   function hearLast() {
+    if (micPhase !== 'idle' || drafting) return;
     if (speakingId || currentSpeakingId()) {
       stopSpeaking();
       return;
@@ -735,18 +736,6 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
           </div>
         )}
         <div>
-          <p className="label">{t('hearThem')}</p>
-          <button
-            type="button"
-            className="btn-secondary px-3 py-1.5 text-xs"
-            title={t('hearRepliesHint')}
-            disabled={!speakingId && !lastHearable(msgs)}
-            onClick={hearLast}
-          >
-            {speakingId ? t('stopHear') : t('hearLine')}
-          </button>
-        </div>
-        <div>
           <p className="label">{t('autoAnswer')}</p>
           <div className="seg" role="group" aria-label={t('autoAnswer')}>
             <button
@@ -768,8 +757,41 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
           </div>
         </div>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <button className="btn-primary text-xs" disabled={drafting || !!last?.mine} onClick={() => { stopSpeaking(); void assist(false); }}>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className="btn-secondary px-3 py-1.5 text-xs"
+          title={t('hearRepliesHint')}
+          disabled={micPhase !== 'idle' || drafting || (!speakingId && !lastHearable(msgs))}
+          onClick={hearLast}
+        >
+          {speakingId ? t('stopHear') : t('hearLine')}
+        </button>
+        <DictationButton
+          ref={dictate}
+          compact
+          lang={speakLang}
+          value={text}
+          topic={conv?.prompt?.question ?? ''}
+          onChange={setCompose}
+          onPhase={setMicPhase}
+          onError={setError}
+          disabled={!!speakingId || drafting || sending}
+          label={t('speak')}
+          allowLabel={t('allowMic')}
+          notNowLabel={t('notNow')}
+          typingLabel={t('typing')}
+          stopLabel={t('stopSpeak')}
+          unsupported={t('micUnsupported')}
+          denied={t('micDenied')}
+          boxRef={box}
+        />
+        <button
+          type="button"
+          className="btn-primary text-xs"
+          disabled={drafting || !!speakingId || micPhase !== 'idle' || !!last?.mine}
+          onClick={() => void assist(false)}
+        >
           {drafting ? t('writing') : t('suggest')}
         </button>
         {process.env.NODE_ENV !== 'production' && !guestHour && (
@@ -858,6 +880,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
                 label={t('hearLine')}
                 stopLabel={t('stopHear')}
                 unsupported={t('speakUnsupported')}
+                disabled={micPhase !== 'idle' || drafting}
               />
               {m.flagged && <p className="mt-1 text-[11px] text-amber-200">{t('moneyWarning')}</p>}
             </div>
@@ -894,27 +917,6 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
                   send();
                 }
               }}
-            />
-            <DictationButton
-              ref={dictate}
-              lang={speakLang}
-              value={text}
-              topic={conv?.prompt?.question ?? ''}
-              onChange={setCompose}
-              onPhase={(phase) => {
-                if (phase === 'asking' || phase === 'listening') stopSpeaking();
-                setMicPhase(phase);
-              }}
-              onError={setError}
-              disabled={sending}
-              label={t('speak')}
-              allowLabel={t('allowMic')}
-              notNowLabel={t('notNow')}
-              typingLabel={t('typing')}
-              stopLabel={t('stopSpeak')}
-              unsupported={t('micUnsupported')}
-              denied={t('micDenied')}
-              boxRef={box}
             />
             <button
               type="button"

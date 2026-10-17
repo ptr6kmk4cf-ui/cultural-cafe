@@ -310,6 +310,7 @@ export function HearButton({
   label,
   stopLabel,
   unsupported,
+  disabled,
 }: {
   id: string;
   text: string;
@@ -317,6 +318,7 @@ export function HearButton({
   label: string;
   stopLabel: string;
   unsupported: string;
+  disabled?: boolean;
 }) {
   const current = useSpeakingId();
   const playing = current === id;
@@ -327,12 +329,14 @@ export function HearButton({
       className={`btn-ghost mt-1 h-7 px-2 text-[11px] ${playing ? 'text-brand-200' : ''}`}
       aria-label={playing ? stopLabel : label}
       aria-pressed={playing}
+      disabled={disabled && !playing}
       onClick={() => {
         if (playing) {
           stopSpeaking();
           return;
         }
-        if (!canSpeak() || !speakLine(id, text, lang, { interrupt: true })) {
+        if (current || disabled) return;
+        if (!canSpeak() || !speakLine(id, text, lang)) {
           window.alert(unsupported);
         }
       }}
@@ -381,6 +385,7 @@ export const DictationButton = forwardRef<
     denied: string;
     topic?: string;
     boxRef?: RefObject<HTMLTextAreaElement | null>;
+    compact?: boolean;
   }
 >(function DictationButton(
   {
@@ -399,6 +404,7 @@ export const DictationButton = forwardRef<
     denied,
     topic = '',
     boxRef,
+    compact = false,
   },
   ref,
 ) {
@@ -744,16 +750,17 @@ export const DictationButton = forwardRef<
   const talking = listening && dictationButtonKind(hearing, spoken, held ? TYPING_HOLD_MS : 0) === 'typing';
   const action = talking ? typingLabel : listening ? stopLabel : asking ? allowLabel : label;
 
+  const size = compact ? 'px-3 py-1.5 text-xs' : 'min-h-[3rem] px-3';
   return (
-    <div className="flex gap-2 self-end">
+    <div className={`flex gap-2 ${compact ? '' : 'self-end'}`}>
       {asking && (
-        <button type="button" className="btn-ghost min-h-[3rem] px-3" disabled={disabled} onClick={cancelAsk}>
+        <button type="button" className={`btn-ghost ${size}`} disabled={disabled} onClick={cancelAsk}>
           {notNowLabel}
         </button>
       )}
       <button
         type="button"
-        className={`min-h-[3rem] px-3 ${listening ? 'btn-danger cafe-mic' : asking ? 'btn-primary cafe-mic-ask' : 'btn-secondary'}`}
+        className={`${size} ${listening ? 'btn-danger cafe-mic' : asking ? 'btn-primary cafe-mic-ask' : 'btn-secondary'}`}
         aria-label={action}
         aria-pressed={listening}
         disabled={disabled || asking}
