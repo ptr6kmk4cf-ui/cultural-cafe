@@ -224,11 +224,15 @@ export const SPEAK_KEEPALIVE_MS = 9000;
 export const SPEAK_AFTER_CANCEL_MS = 80;
 export const SPEAK_IDLE_WAIT_MS = 1000;
 
+/** A line Hear may read: theirs, and not a local draft. */
+export function isHearableLine(line: { id: string; mine?: boolean } | undefined) {
+  return !!line && line.mine === false && !line.id.startsWith('local_');
+}
+
 /** The last line Hear should read when you turn it on. Your own bubbles stay quiet. */
 export function lastHearable<T extends { id: string; mine?: boolean }>(msgs: T[]) {
   for (let i = msgs.length - 1; i >= 0; i -= 1) {
-    const line = msgs[i];
-    if (line && !line.mine && !line.id.startsWith('local_')) return line;
+    if (isHearableLine(msgs[i])) return msgs[i];
   }
   return undefined;
 }

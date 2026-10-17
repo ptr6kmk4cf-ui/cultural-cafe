@@ -580,8 +580,8 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     }
     stopSpeaking();
     if (hearRef.current) {
-      const last = lastHearable(msgsRef.current);
-      if (last) {
+      const last = msgsRef.current.at(-1);
+      if (last && !last.mine && !last.id.startsWith('local_')) {
         knownHear.current.delete(last.id);
         if (heardRef.current === last.id) heardRef.current = '';
       }
@@ -617,8 +617,8 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
 
   useEffect(() => {
     if (!hear || ended) return;
-    const last = lastHearable(msgs);
-    if (!last || last.id === heardRef.current) return;
+    const last = msgs.at(-1);
+    if (!last || last.mine || last.id.startsWith('local_') || last.id === heardRef.current) return;
     if (knownHear.current.has(last.id)) return;
     const line = spokenLine({
       ...last,

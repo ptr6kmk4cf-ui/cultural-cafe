@@ -7,6 +7,7 @@ import {
   fillComposeOther,
   placeAssistDraft,
   dictationButtonKind,
+  isHearableLine,
   joinDictation,
   needsSpeakKeepAlive,
   lastHearable,
@@ -212,6 +213,9 @@ test('Hear On reads their last line, not yours', () => {
   assert.equal(lastHearable(lines)?.id, 'g1');
   assert.equal(lastHearableId(lines), 'g1');
   assert.equal(lastHearableId([{ id: 'me', mine: true }]), '');
+  assert.equal(isHearableLine(lines[0]), true);
+  assert.equal(isHearableLine(lines[1]), false);
+  assert.equal(isHearableLine({ id: 'g2' }), false);
 });
 
 test('Chrome needs a speaker keep-alive; iPhone does not', () => {

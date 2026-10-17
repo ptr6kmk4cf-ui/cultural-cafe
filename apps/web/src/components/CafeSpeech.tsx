@@ -188,6 +188,8 @@ function playSpeakChunk(gen: number, id: string, locale: string, voice: SpeechSy
 export function speakLine(id: string, text: string, lang: string) {
   const chunks = splitSpeakChunks(text);
   if (!chunks.length || !canSpeak()) return false;
+  const synth = window.speechSynthesis;
+  if (speakingId === id && (synth.speaking || synth.pending)) return true;
   speakGen += 1;
   const gen = speakGen;
   speakChunks = chunks;
@@ -195,7 +197,6 @@ export function speakLine(id: string, text: string, lang: string) {
   heardSpeech = false;
   chunkTries = 0;
   clearSpeakTimers();
-  const synth = window.speechSynthesis;
   const wasBusy = synth.speaking || synth.pending;
   if (wasBusy) synth.cancel();
   if (synth.paused) synth.resume();
