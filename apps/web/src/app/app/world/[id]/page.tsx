@@ -736,6 +736,18 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
           </div>
         )}
         <div>
+          <p className="label">{t('hearThem')}</p>
+          <button
+            type="button"
+            className="btn-secondary px-3 py-1.5 text-xs"
+            title={t('hearRepliesHint')}
+            disabled={micPhase !== 'idle' || drafting || (!speakingId && !lastHearable(msgs))}
+            onClick={hearLast}
+          >
+            {speakingId ? t('stopHear') : t('hearLine')}
+          </button>
+        </div>
+        <div>
           <p className="label">{t('autoAnswer')}</p>
           <div className="seg" role="group" aria-label={t('autoAnswer')}>
             <button
@@ -757,35 +769,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
           </div>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          className="btn-secondary px-3 py-1.5 text-xs"
-          title={t('hearRepliesHint')}
-          disabled={micPhase !== 'idle' || drafting || (!speakingId && !lastHearable(msgs))}
-          onClick={hearLast}
-        >
-          {speakingId ? t('stopHear') : t('hearLine')}
-        </button>
-        <DictationButton
-          ref={dictate}
-          compact
-          lang={speakLang}
-          value={text}
-          topic={conv?.prompt?.question ?? ''}
-          onChange={setCompose}
-          onPhase={setMicPhase}
-          onError={setError}
-          disabled={!!speakingId || drafting || sending}
-          label={t('speak')}
-          allowLabel={t('allowMic')}
-          notNowLabel={t('notNow')}
-          typingLabel={t('typing')}
-          stopLabel={t('stopSpeak')}
-          unsupported={t('micUnsupported')}
-          denied={t('micDenied')}
-          boxRef={box}
-        />
+      <div className="flex flex-wrap gap-2">
         <button
           type="button"
           className="btn-primary text-xs"
@@ -917,6 +901,24 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
                   send();
                 }
               }}
+            />
+            <DictationButton
+              ref={dictate}
+              lang={speakLang}
+              value={text}
+              topic={conv?.prompt?.question ?? ''}
+              onChange={setCompose}
+              onPhase={setMicPhase}
+              onError={setError}
+              disabled={!!speakingId || drafting || sending}
+              label={t('speak')}
+              allowLabel={t('allowMic')}
+              notNowLabel={t('notNow')}
+              typingLabel={t('typing')}
+              stopLabel={t('stopSpeak')}
+              unsupported={t('micUnsupported')}
+              denied={t('micDenied')}
+              boxRef={box}
             />
             <button
               type="button"

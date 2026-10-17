@@ -126,7 +126,7 @@ export const UI = {
   hearReplies: 'Hear replies',
   muteReplies: 'Stop hearing replies',
   hearView: 'Whether new replies are read aloud',
-  hearRepliesHint: 'Hear their last answer. Let it finish before you speak.',
+  hearRepliesHint: 'Hear their last answer. Let it finish before you Speak.',
   muteRepliesHint: 'Keep the table quiet. You can still tap Hear on one line.',
   theirLanguage: 'Their language',
   useMyLanguage: 'My language',
