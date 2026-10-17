@@ -87,7 +87,22 @@ test('when you choose their language, you hear and read the original', () => {
   assert.equal(heard.lang, 'es');
 });
 
-test('their language does not show the English copy', () => {
+test('their language shows their original, not the English copy', () => {
+  const heard = spokenLine({
+    mine: false,
+    text: 'Ako propustim tržnicu, ostatak dana mi je posuđen.',
+    language: 'hr',
+    translation: 'If I miss the market, the rest of the day feels borrowed.',
+    translationLang: 'en',
+    myLanguage: 'en',
+    theirLanguage: 'hr',
+    inTheirLanguage: true,
+  });
+  assert.match(heard.text, /tržnicu|posuđen/);
+  assert.equal(heard.lang, 'hr');
+});
+
+test('their language still shows a guest line when the catalog leaked English', () => {
   const heard = spokenLine({
     mine: false,
     text: 'If I miss the market, the rest of the day feels borrowed.',
@@ -98,23 +113,36 @@ test('their language does not show the English copy', () => {
     theirLanguage: 'hr',
     inTheirLanguage: true,
   });
-  assert.equal(heard.text, '');
-  assert.equal(heard.lang, 'hr');
+  assert.match(heard.text, /market/);
+  assert.equal(heard.lang, 'en');
 });
 
-test('my language does not show their original', () => {
+test('my language does not show their original when a translation exists', () => {
   const heard = spokenLine({
     mine: false,
     text: 'Previše voća kao plan mi je super taktika za slobodno popodne. Imaš li ti neko mjesto gdje to voće pojedeš?',
+    language: 'hr',
+    translation: 'Too much fruit is my lazy afternoon plan. Do you have a place for that?',
+    translationLang: 'en',
+    myLanguage: 'en',
+    theirLanguage: 'hr',
+    inTheirLanguage: false,
+  });
+  assert.match(heard.text, /fruit/);
+  assert.equal(heard.lang, 'en');
+});
+
+test('a guest line still shows when there is no translation yet', () => {
+  const heard = spokenLine({
+    mine: false,
+    text: 'Previše voća kao plan mi je super taktika za slobodno popodne.',
     language: 'hr',
     translation: null,
     translationLang: null,
     myLanguage: 'en',
     theirLanguage: 'hr',
-    inTheirLanguage: false,
   });
-  assert.equal(heard.text, '');
-  assert.equal(heard.lang, 'en');
+  assert.match(heard.text, /voća/);
 });
 
 test('their line is heard in your language, not in theirs', () => {

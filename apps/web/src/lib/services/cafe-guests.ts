@@ -748,12 +748,15 @@ function packGuestLine(
   translationLang: string | null,
   flagged: boolean,
 ) {
+  const spoken = text.replace(/\s+/g, ' ').trim();
+  const reader = (translation || '').replace(/\s+/g, ' ').trim();
+  const line = spoken || reader;
   return {
     id: randomBytes(12).toString('base64url'),
-    text,
+    text: line,
     language: guest.language,
-    translation,
-    translationLang,
+    translation: reader || null,
+    translationLang: reader ? translationLang : null,
     flagged,
     createdAt: new Date().toISOString(),
     mine: false as const,
@@ -924,7 +927,7 @@ async function guestOriginal(
   if (first && !draftNeedsTranslation(first, guestLang)) return first;
   const second = await originalInGuestLanguage(account, backup, guestLang);
   if (second && !draftNeedsTranslation(second, guestLang)) return second;
-  return pickLineInLanguage([first, second, draft, backup], guestLang);
+  return pickLineInLanguage([first, second, draft, backup], guestLang) || first || second || draft || backup;
 }
 
 async function readerOfGuestLine(
@@ -1000,6 +1003,9 @@ async function spokenGuestLine(userId: string, guest: Guest, turns: GuestTurn[],
       });
       if (draft && !draftNeedsTranslation(draft, humanLang) && !guestLineRepeats(draft, avoid)) reader = draft;
     }
+    if (!reader && humanLang !== guest.language) {
+      reader = (scripted.translation || '').trim() || null;
+    }
     return {
       text,
       language: guest.language,
@@ -1045,9 +1051,10 @@ export async function replyAsCafeGuest(userId: string, conversationId: string, h
     where: { id: userId },
     select: { id: true, email: true, name: true, role: true, plan: true },
   });
-  const text = account
-    ? await originalInGuestLanguage(account, line.text, guest.language)
+  const native = account
+    ? await originalInGuestLanguage(account, line.text || guest.hello, guest.language)
     : line.text;
+  const text = native || line.text || guest.hello;
   await db.worldPeerLink.upsert({
     where: { conversationId_userId: { conversationId, userId: otherId } },
     create: { conversationId, userId: otherId, phase: 'open' },

@@ -199,8 +199,9 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
         const message = r.message as Msg;
         setMsgs((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
       })
-      .catch(() => {
+      .catch((e) => {
         if (live(tableGen, token) && greeted.current === id) greeted.current = '';
+        if (live(tableGen, token)) setError((e as Error).message || 'They did not say hello. Send a line.');
       });
   }, [guestHour, id, ended]);
 
@@ -851,7 +852,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
             theirLanguage: theirLang,
             inTheirLanguage: inTheirs,
           });
-          const main = heard.text;
+          const main = heard.text || m.text || m.translation;
           if (!main) return null;
           return (
             <div key={m.id} className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${m.mine ? 'ml-auto bg-brand-500/20 text-white' : 'mr-auto bg-white/5 text-ink-100'}`}>
@@ -859,7 +860,7 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
               <p className="mt-0.5 text-base" dir={isRtl(heard.lang) ? 'rtl' : 'auto'}>{main}</p>
               <HearButton
                 id={m.id}
-                text={heard.text}
+                text={main}
                 lang={heard.lang}
                 label={t('hearLine')}
                 stopLabel={t('stopHear')}

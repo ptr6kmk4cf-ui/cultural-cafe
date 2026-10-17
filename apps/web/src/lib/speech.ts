@@ -177,16 +177,24 @@ export function spokenLine(m: {
   if (m.inTheirLanguage) {
     const pool = m.mine ? [original, translated] : [original];
     const inTheirs = theirLang ? pickLineInLanguage(pool, theirLang) : '';
-    const inMine = pickLineInLanguage(m.mine ? [original, translated] : [original], m.myLanguage);
-    const text = inTheirs || (!inMine ? original : '');
-    return { text, lang: theirLang || m.language || m.myLanguage };
+    if (inTheirs) return { text: inTheirs, lang: theirLang || m.language || m.myLanguage };
+    if (!m.mine && original) {
+      const inMine = pickLineInLanguage([original], m.myLanguage);
+      return { text: original, lang: inMine ? m.myLanguage : m.language || theirLang || m.myLanguage };
+    }
+    const inMine = pickLineInLanguage(pool, m.myLanguage);
+    return { text: inMine ? '' : original, lang: theirLang || m.language || m.myLanguage };
   }
   if (m.mine) {
     const mine = pickLineInLanguage([original, translated], m.myLanguage);
     return { text: mine || original, lang: m.language || m.myLanguage };
   }
   const mine = pickLineInLanguage([translated, original], m.myLanguage);
-  return { text: mine, lang: m.myLanguage };
+  if (mine) return { text: mine, lang: m.myLanguage };
+  return {
+    text: translated || original,
+    lang: translated ? m.translationLang || m.myLanguage : m.language || m.myLanguage,
+  };
 }
 
 /** Stitches live dictation onto the line that was already in the box. */
