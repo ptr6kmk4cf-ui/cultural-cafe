@@ -30,7 +30,8 @@
     "test:lang": "node --env-file=apps/web/.env scripts/lang-check.mjs",
     "test:world": "node --env-file=apps/web/.env scripts/world-check.mjs",
     "test:reports": "node --env-file=apps/web/.env scripts/reports-check.mjs",
-    "test:ratelimit": "node --env-file=apps/web/.env scripts/rate-limit-check.mjs"
+    "test:ratelimit": "node --env-file=apps/web/.env scripts/rate-limit-check.mjs",
+    "test:twopeople": "node --env-file=apps/web/.env scripts/two-people-check.mjs"
   },
   "devDependencies": {
     "embedded-postgres": "^17.5.0-beta.15",

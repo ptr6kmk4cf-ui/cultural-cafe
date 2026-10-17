@@ -59,6 +59,8 @@ export function useWorldPeer(
     let channelCloseTimer = 0;
     let bornAt = 0;
     const usedAttempts = new Set<string>();
+    /** Our own attempts we already gave up on. A "restart" about one of these is old news. */
+    const retiredAttempts = new Set<string>();
     const seenSignals = new Set<string>();
 
     const live = (next: RTCPeerConnection) => !closed && conn === next;
@@ -134,6 +136,10 @@ export function useWorldPeer(
       if (closed || restarting) return;
       restarting = true;
       if (fromAttempt && !silent) void post('restart', JSON.stringify({ attemptId: fromAttempt }));
+      if (activeAttempt) {
+        retiredAttempts.add(activeAttempt);
+        if (retiredAttempts.size > 24) retiredAttempts.delete(retiredAttempts.values().next().value as string);
+      }
       closeSockets();
       clearTimeout(restartTimer);
       const wait = Math.min(4_000, 500 * 2 ** Math.min(tries, 3)) + Math.floor(Math.random() * 250);
@@ -350,7 +356,8 @@ export function useWorldPeer(
           }
 
           const tooNewToRestart = Date.now() - born < RESTART_MIN_AGE_MS;
-          if (!linkOpen() && !tooNewToRestart && fresh.some((s) => s.type === 'restart')) {
+          const restartAsked = fresh.some((s) => s.type === 'restart' && !retiredAttempts.has(s.body.attemptId));
+          if (!linkOpen() && !tooNewToRestart && restartAsked) {
             restart(currentAttempt() || attemptId);
             return;
           }
@@ -365,7 +372,16 @@ export function useWorldPeer(
             }
             if (latest && description && !linkOpen()) {
               if (answeredOffer) {
-                restart(answeredOffer);
+                // A newer offer replaced the one we answered (for example after a reload).
+                // Switch to it quietly: a "restart" here would make them drop the new attempt too.
+                if (latest.body.attemptId !== answeredOffer) {
+                  // The next attempt must still see this offer, so forget we already read it.
+                  seenSignals.delete(latest.id);
+                  tries = 0;
+                  restart(undefined, true);
+                } else {
+                  restart(answeredOffer);
+                }
                 return;
               }
               const offerAttempt = latest.body.attemptId;

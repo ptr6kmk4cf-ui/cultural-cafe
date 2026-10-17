@@ -182,3 +182,32 @@ test('photo backstop matches explicit requests to approved, unshared photos only
   assert.equal(matchRequestedPhoto('How were your holidays?', photos, []), null, 'no photo requested');
   assert.equal(matchRequestedPhoto('Send me a photo!', photos, []), null, 'nothing matches');
 });
+
+test('a French line to a Japanese reader is always translated, even when the word check is unsure', () => {
+  for (const line of [
+    'Jamais ! On pourrait se parler samedi à 18h30 ? Un billet Paris-Osaka coûte environ 850 €.',
+    '<b>Super</b> <script>alert(1)</script> & merci !',
+    'Ok',
+    'Attends',
+  ]) {
+    const out = outgoingLanguages(line, 'fr', 'ja');
+    assert.equal(out.translateTo, 'ja', line);
+    assert.equal(out.required, true, line);
+  }
+});
+
+test('a line already in the reader’s script or words is kept as theirs', () => {
+  assert.equal(outgoingLanguages('こんにちは、元気？', 'fr', 'ja').translateTo, 'fr');
+  assert.equal(outgoingLanguages('مرحبا كيف حالك', 'pt', 'ar').language, 'ar');
+  assert.equal(outgoingLanguages('Bonjour, je suis à Lyon et toi ?', 'en', 'fr').required, false);
+});
+
+test('when unsure between two Latin languages, translate', () => {
+  assert.equal(outgoingLanguages('Attends', 'fr', 'en').translateTo, 'en');
+  assert.equal(outgoingLanguages('Sorry, my French is bad', 'ja', 'fr').translateTo, 'fr');
+});
+
+test('emoji and numbers alone are not sent for translation', () => {
+  assert.equal(outgoingLanguages('😂😂👍', 'ja', 'fr').required, false);
+  assert.equal(outgoingLanguages('18:30 ?', 'fr', 'ja').required, false);
+});

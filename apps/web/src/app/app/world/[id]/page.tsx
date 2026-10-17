@@ -65,8 +65,10 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
   const assistRef = useRef(false);
   const autoTries = useRef<Record<string, number>>({});
   const sendPeerRef = useRef<(data: unknown) => void>(() => {});
-  const busyRef = useRef(false);
-  const lastSendAt = useRef(0);
+  /** Lines go out one after another, in the order they were sent, even while one is still translating. */
+  const sendChain = useRef<Promise<void>>(Promise.resolve());
+  const pendingSends = useRef(0);
+  const lastSend = useRef({ at: 0, body: '' });
   const pendingRelease = useRef<{ id: string; timer: number } | null>(null);
   const greeted = useRef('');
   const [keyboard, setKeyboard] = useState(0);
@@ -292,8 +294,12 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     if (!live(tableGen, token)) return;
     const mine = { ...r.message, mine: true as const };
     const place = (list: Msg[]) => {
-      const without = replaceId ? list.filter((x) => x.id !== replaceId && x.id !== mine.id) : list.filter((x) => x.id !== mine.id);
-      return [...without, mine];
+      // Swap the placeholder in where it sits, so queued lines keep their order on this screen.
+      const at = replaceId ? list.findIndex((x) => x.id === replaceId) : -1;
+      const without = list.filter((x) => x.id !== mine.id && x.id !== replaceId);
+      if (at < 0) return [...without, mine];
+      const before = list.slice(0, at).filter((x) => x.id !== mine.id).length;
+      return [...without.slice(0, before), mine, ...without.slice(before)];
     };
     if (hour) {
       const prior = place(msgsRef.current)
@@ -330,18 +336,18 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     setMsgs((m) => place(m));
   }
 
-  async function send() {
+  function send() {
     const now = Date.now();
-    if (now - lastSendAt.current < SEND_DEBOUNCE_MS) return;
-    lastSendAt.current = now;
     const body = text.trim();
-    if (busyRef.current) return;
+    // A tap can fire touchstart and click together. Ignore the second copy of the same line only.
+    if (now - lastSend.current.at < SEND_DEBOUNCE_MS && body === lastSend.current.body) return;
     if (!body) {
-      setError('Type a few words, then tap Send.');
+      if (now - lastSend.current.at >= SEND_DEBOUNCE_MS) setError('Type a few words, then tap Send.');
       return;
     }
+    lastSend.current = { at: now, body };
     const token = tableGen.current;
-    busyRef.current = true;
+    pendingSends.current += 1;
     setSending(true);
     setError('');
     dictate.current?.hangUp();
@@ -350,18 +356,26 @@ export default function WorldChat({ params }: { params: Promise<{ id: string }> 
     bump(prefetchGen);
     draftPair.current = emptyComposePair();
     setText('');
-    try {
-      await ship(body, localId);
-    } catch (e) {
+    const run = sendChain.current.then(async () => {
       if (!live(tableGen, token)) return;
-      setMsgs((m) => m.filter((x) => x.id !== localId));
-      draftPair.current = composePairFromEdit(theirsRef.current, body);
-      setText(body);
-      setError((e as Error).message || 'Could not send. Tap Send again.');
-    } finally {
-      busyRef.current = false;
-      if (live(tableGen, token)) setSending(false);
-    }
+      try {
+        await ship(body, localId);
+      } catch (e) {
+        if (!live(tableGen, token)) return;
+        setMsgs((m) => m.filter((x) => x.id !== localId));
+        // Put the line back unless they have already started the next one.
+        setText((now) => {
+          if (now.trim()) return now;
+          draftPair.current = composePairFromEdit(theirsRef.current, body);
+          return body;
+        });
+        setError((e as Error).message || 'Could not send. Tap Send again.');
+      } finally {
+        pendingSends.current -= 1;
+        if (live(tableGen, token) && pendingSends.current === 0) setSending(false);
+      }
+    });
+    sendChain.current = run.catch(() => undefined);
   }
 
   function prefetchOtherDraft(source: string, fromTheirs: boolean) {

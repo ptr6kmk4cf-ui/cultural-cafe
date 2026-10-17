@@ -155,9 +155,45 @@ export function normalizeLang(code: string | null | undefined, fallback = 'en'):
  * A line in your language is translated for them (required). A line already in
  * theirs is translated back into yours (optional, for the switch).
  */
+/** Languages written in their own script. A line with no letters from that script is not in them. */
+const SCRIPT_LANGS = new Set([...SCRIPTS.map(([, lang]) => lang), 'zh', 'ja', 'ko', 'ne', 'mr', 'sa']);
+
+/**
+ * True only with positive evidence that a line is already in `lang`: its script, or
+ * more of that language's common words than of the writer's own. When unsure, false,
+ * so the line is translated (the model returns it unchanged if it was already right).
+ * Lines with no letters at all (emoji, numbers) need no translation.
+ */
+export function clearlyInLanguage(text: string, lang: string, writerLang: string): boolean {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (!clean || !lang) return false;
+  if (!/\p{L}/u.test(clean)) return true;
+  const script = scriptLanguage(clean);
+  if (script) {
+    if (!translationFitsLanguage(clean, lang)) return false;
+    return script === lang || (lang === 'ja' && script === 'zh') || sameScriptFamily(script, lang);
+  }
+  if (SCRIPT_LANGS.has(lang)) return false;
+  const score = stopwordScores(clean);
+  const mine = score[lang] ?? 0;
+  if (mine === 0 || mine <= (score[writerLang] ?? 0)) return false;
+  return Object.values(score).every((other) => other <= mine);
+}
+
+/** How many common words of each language a Latin-script line contains. */
+function stopwordScores(text: string): Record<string, number> {
+  const words = text.toLowerCase().normalize('NFC').match(/[\p{L}']+/gu) ?? [];
+  const out: Record<string, number> = {};
+  for (const [lang, list] of Object.entries(STOPWORDS)) {
+    const set = new Set(list);
+    out[lang] = words.filter((w) => set.has(w)).length;
+  }
+  return out;
+}
+
 export function outgoingLanguages(text: string, myLang: string, otherLang: string) {
   const spoken = text.replace(/\s+/g, ' ').trim();
-  if (otherLang && !draftNeedsTranslation(spoken, otherLang)) {
+  if (otherLang && clearlyInLanguage(spoken, otherLang, myLang)) {
     return {
       language: otherLang,
       translateTo: myLang && myLang !== otherLang ? myLang : null,
